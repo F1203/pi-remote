@@ -228,10 +228,23 @@
       console.warn('Bluetooth:', err);
       try { if (dev && dev.gatt.connected) dev.gatt.disconnect(); } catch {}
       if (!navigator.bluetooth) return;
-      if (err.name === 'NotFoundError') connMsg('No se eligió ningún dispositivo. ¿La Raspberry está encendida y cerca?', 'Conectar');
+      if (err.name === 'NotFoundError' || err.name === 'SecurityError') connMsg(explainBleError(err), 'Conectar');
       else if (paired) { connMsg('Se perdió la conexión. Reintentando…', 'Elegir de nuevo'); if (!document.hidden) retryLater(3000); }
       else connMsg('No pude conectar con la Raspberry' + (err.message ? ` (${err.message})` : '') + '.', 'Reintentar');
     } finally { connecting = false; }
+  }
+  // Chrome usa NotFoundError para casi todo (lista cerrada, permisos, Bluetooth apagado...):
+  // el texto del error es lo único que dice qué pasó
+  function explainBleError(err) {
+    const m = (err.message || '').toLowerCase();
+    if (m.includes('cancel')) return 'Se cerró la lista sin elegir. Tocá Conectar y elegí «Pi Remote».';
+    if (m.includes('denied') || m.includes('permission'))
+      return 'Chrome no tiene permiso para buscar dispositivos. Activá la Ubicación del celular y, en Ajustes → Apps → Chrome → Permisos, «Dispositivos cercanos».';
+    if (m.includes('adapter')) return 'El Bluetooth del celular está apagado.';
+    if (m.includes('disabled') || m.includes('blocklist') || m.includes('globally'))
+      return 'Este navegador tiene el Bluetooth web desactivado. Abrí la página con Chrome.';
+    if (m.includes('gesture')) return 'Tocá el botón Conectar para buscar la Raspberry.';
+    return `No se pudo abrir la lista de dispositivos (${err.name}: ${err.message}).`;
   }
   function onBleDown() {
     rx = null; setOk(false);
