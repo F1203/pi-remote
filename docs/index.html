@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#111418">
 <title>Pi Remote</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
   :root { --bg:#111418; --panel:#1b2027; --btn:#262d36; --btn-on:#3d7cff; --fg:#e8ecf1; --muted:#8a94a3; --vh:100dvh; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
@@ -39,6 +42,12 @@
   #sleepov { display:none; position:fixed; inset:0; z-index:5; background:rgba(8,10,12,.92); color:var(--fg); font-size:22px; text-align:center; align-items:center; justify-content:center; flex-direction:column; line-height:1.6; }
   #sleepov small { color:var(--muted); font-size:15px; }
   body.asleep #sleepov { display:flex; }
+  #connov { display:none; position:fixed; inset:0; z-index:6; background:rgba(8,10,12,.95); color:var(--fg); text-align:center; align-items:center; justify-content:center; flex-direction:column; gap:18px; padding:24px; line-height:1.5; }
+  body.offline #connov { display:flex; }
+  #connov h1 { margin:0; font-size:24px; font-weight:600; }
+  #connmsg { font-size:17px; max-width:340px; }
+  #connov small { color:var(--muted); font-size:14px; max-width:340px; }
+  #connbtn { background:var(--btn-on); padding:14px 32px; font-size:18px; border-radius:999px; }
   #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
 </style>
 </head>
@@ -101,6 +110,12 @@
 </div>
 <div id="sleepov">Pantalla apagada<br><small>Tocá para encender</small></div>
 <div id="tip"></div>
+<div id="connov">
+  <h1>Pi Remote</h1>
+  <div id="connmsg">Buscando la Raspberry…</div>
+  <button id="connbtn" style="display:none">Conectar</button>
+  <small>La primera vez elegí «Pi Remote» en la lista y, cuando el celular lo pida, escribí el código que aparece en la pantalla de la Raspberry.</small>
+</div>
 <textarea id="kb" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
 <script>
 (() => {
@@ -124,42 +139,163 @@
   const fitVV = () => { if (vv) document.documentElement.style.setProperty('--vh', vv.height + 'px'); window.scrollTo(0, 0); };
   if (vv) { vv.addEventListener('resize', fitVV); vv.addEventListener('scroll', fitVV); fitVV(); }
 
-  // ---------- WebSocket ----------
+  // ---------- Conexión ----------
+  // Abierta desde la Raspberry (http://…:8080): WebSocket por WiFi, como siempre.
+  // Abierta desde GitHub Pages (https): Bluetooth LE, sin depender de la IP ni de la red.
+  const BLE = location.protocol === 'https:';
+  const vibrate = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+  const setOk = (ok) => { $('status').classList.toggle('ok', ok); body.classList.toggle('offline', BLE && !ok); };
+  function onMsg(m) {
+    if (m.t === 'hb') return;
+    if (m.mtu) bleChunk = Math.max(20, Math.min(m.mtu - 3, 509));
+    if (m.t === 'clickres') onClickResult(m);
+    else if (m.t === 'seekres' && !m.ok) { showTip($('seekbtn'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
+    else if (m.t === 'sleep') body.classList.toggle('asleep', m.on);
+    else if (m.t === 'mtu') bleChunk = Math.max(20, Math.min(m.n - 3, 509));
+  }
+
+  // ----- WebSocket -----
   // Al volver de segundo plano el celular suele dejar una conexión "zombi" que parece abierta pero
   // está muerta: un latido cada 2 s detecta eso y al volver a la página se reconecta enseguida.
   let ws, queue = [], lastRx = 0, connStart = 0, retryT = 0, delay = 250;
   function connect() {
     clearTimeout(retryT);
     if (ws) { ws.onopen = ws.onclose = ws.onmessage = null; try { ws.close(); } catch {} }
-    $('status').classList.remove('ok');
+    setOk(false);
     const s = ws = new WebSocket(`ws://${location.host}/ws`);
     connStart = Date.now();
-    s.onopen = () => { delay = 250; lastRx = Date.now(); $('status').classList.add('ok'); queue.forEach((m) => s.send(m)); queue = []; };
-    s.onclose = () => { $('status').classList.remove('ok'); retryT = setTimeout(connect, delay); delay = Math.min(delay * 2, 2000); };
-    s.onmessage = (ev) => { lastRx = Date.now(); const m = JSON.parse(ev.data); if (m.t === 'hb') return; if (m.t === 'clickres') onClickResult(m);
-      else if (m.t === 'seekres' && !m.ok) { showTip($('seekbtn'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
-      else if (m.t === 'sleep') body.classList.toggle('asleep', m.on); };
+    s.onopen = () => { delay = 250; lastRx = Date.now(); setOk(true); queue.forEach((m) => s.send(m)); queue = []; };
+    s.onclose = () => { setOk(false); retryT = setTimeout(connect, delay); delay = Math.min(delay * 2, 2000); };
+    s.onmessage = (ev) => { lastRx = Date.now(); onMsg(JSON.parse(ev.data)); };
   }
-  function send(obj) {
+  function wsSend(obj) {
     const m = JSON.stringify(obj);
     if (ws && ws.readyState === 1) ws.send(m);
     else if (obj.t !== 'm' && obj.t !== 's') queue.push(m);
   }
-  connect();
   function checkConn(maxSilence) {
     if (ws.readyState === 1) {
       if (Date.now() - lastRx > maxSilence) connect();
       else ws.send('{"t":"hb"}');
     } else if (ws.readyState === 0 ? Date.now() - connStart > 3000 : !retryT) connect();
   }
-  setInterval(() => { if (!document.hidden) checkConn(6000); }, 2000);
-  // Al volver al navegador o encender la pantalla: si hace rato que no hay noticias del servidor, reconectar ya
-  const revive = () => { if (!document.hidden) { clearTimeout(retryT); retryT = 0; checkConn(2500); } };
-  document.addEventListener('visibilitychange', revive);
-  window.addEventListener('pageshow', revive);
-  window.addEventListener('focus', revive);
-  window.addEventListener('online', () => connect());
-  const vibrate = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+
+  // ----- Bluetooth LE -----
+  // Mensajes JSON terminados en "\n", partidos en trozos que entren en la conexión (MTU).
+  // Mover y scroll van sin confirmación y se acumulan mientras el enlace está ocupado; lo demás
+  // (teclas, texto, clics) va con confirmación para que no se pierda.
+  const SVC = 'b551c54d-9c48-4fe0-9d31-977e0f89ca05';
+  const RXU = '73aafe26-bfae-4d37-913b-605c6c5c1896', TXU = '9c421de1-3bfe-4d09-a4c8-f5e99e7e2580';
+  const enc = new TextEncoder();
+  let dev = null, rx = null, bleChunk = 20, bq = [], writing = false, connecting = false;
+  let inbuf = '', dec = new TextDecoder(), bleRetryT = 0, paired = false;
+  const connMsg = (text, btn) => {
+    $('connmsg').textContent = text;
+    $('connbtn').style.display = btn ? '' : 'none';
+    if (btn) $('connbtn').textContent = btn;
+  };
+  const timeout = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('timeout')), ms))]);
+  const retryLater = (ms) => { clearTimeout(bleRetryT); bleRetryT = setTimeout(() => bleConnect(false), ms); };
+
+  async function bleConnect(pick) {
+    if (connecting || rx) return;
+    connecting = true; clearTimeout(bleRetryT);
+    try {
+      if (pick) {
+        dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
+      } else if (!dev && navigator.bluetooth.getDevices) {
+        // Chrome recuerda el permiso: si ya se eligió la Raspberry antes, reconectar sin preguntar
+        dev = (await navigator.bluetooth.getDevices())[0] || null;
+      }
+      if (!dev) { connMsg('Tocá Conectar y elegí la Raspberry en la lista.', 'Conectar'); return; }
+      dev.ongattserverdisconnected = onBleDown;
+      connMsg('Conectando con la Raspberry…');
+      const server = await timeout(dev.gatt.connect(), 15000);
+      const svc = await server.getPrimaryService(SVC);
+      const tx = await svc.getCharacteristic(TXU), rxc = await svc.getCharacteristic(RXU);
+      if (!paired) connMsg('Si el celular pide un código, escribí el que aparece en la pantalla de la Raspberry.');
+      const hello = await timeout(tx.readValue(), 60000); // la primera vez dispara el emparejamiento
+      inbuf = ''; dec = new TextDecoder();
+      tx.oncharacteristicvaluechanged = (ev) => onBleData(ev.target.value);
+      await tx.startNotifications();
+      await rxc.writeValueWithResponse(enc.encode('\n')); // descarta restos de una conexión anterior
+      rx = rxc; paired = true;
+      onMsg(JSON.parse(new TextDecoder().decode(hello)));
+      setOk(true); vibrate(20);
+      bq = bq.filter((o) => o.t !== 'm' && o.t !== 's');
+      pump();
+    } catch (err) {
+      console.warn('Bluetooth:', err);
+      try { if (dev && dev.gatt.connected) dev.gatt.disconnect(); } catch {}
+      if (!navigator.bluetooth) return;
+      if (err.name === 'NotFoundError') connMsg('No se eligió ningún dispositivo. ¿La Raspberry está encendida y cerca?', 'Conectar');
+      else if (paired) { connMsg('Se perdió la conexión. Reintentando…', 'Elegir de nuevo'); if (!document.hidden) retryLater(3000); }
+      else connMsg('No pude conectar con la Raspberry' + (err.message ? ` (${err.message})` : '') + '.', 'Reintentar');
+    } finally { connecting = false; }
+  }
+  function onBleDown() {
+    rx = null; setOk(false);
+    if (paired) { connMsg('Se perdió la conexión. Reconectando…', 'Elegir de nuevo'); if (!document.hidden) retryLater(500); }
+  }
+  function onBleData(dv) {
+    inbuf += dec.decode(dv, { stream: true });
+    let i;
+    while ((i = inbuf.indexOf('\n')) >= 0) {
+      const line = inbuf.slice(0, i); inbuf = inbuf.slice(i + 1);
+      if (line.trim()) { try { onMsg(JSON.parse(line)); } catch (e) { console.warn('BLE inválido', line); } }
+    }
+  }
+  function bleSend(obj) {
+    const fast = obj.t === 'm' || obj.t === 's';
+    if (!rx && fast) return;
+    const last = bq[bq.length - 1];
+    if (fast && last && last.t === obj.t) { last.x += obj.x; last.y += obj.y; }
+    else bq.push({ ...obj });
+    pump();
+  }
+  async function pump() {
+    if (writing || !rx) return;
+    writing = true;
+    try {
+      while (bq.length && rx) {
+        const obj = bq[0], fast = obj.t === 'm' || obj.t === 's';
+        const data = enc.encode(JSON.stringify(obj) + '\n');
+        bq.shift();
+        try {
+          for (let i = 0; i < data.length; i += bleChunk) {
+            const part = data.slice(i, i + bleChunk);
+            if (fast) await rx.writeValueWithoutResponse(part); else await rx.writeValueWithResponse(part);
+          }
+        } catch (err) {
+          console.warn('BLE write', err);
+          if (!fast && rx && (obj.retry = (obj.retry || 0) + 1) < 3) { bq.unshift(obj); await new Promise((r) => setTimeout(r, 50)); }
+          if (!dev || !dev.gatt.connected) break;
+        }
+      }
+    } finally { writing = false; }
+  }
+
+  let send;
+  if (BLE) {
+    send = bleSend;
+    setOk(false);
+    if (!navigator.bluetooth) connMsg('Este navegador no tiene Bluetooth web. Abrí la página con Chrome en Android.');
+    else bleConnect(false);
+    // «Reintentar» vuelve a probar con la misma Raspberry; «Conectar» / «Elegir de nuevo» abren la lista
+    $('connbtn').onclick = () => { clearTimeout(bleRetryT); if (!rx) bleConnect(!(dev && $('connbtn').textContent === 'Reintentar')); };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && !rx && dev && paired) bleConnect(false); });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  } else {
+    send = wsSend;
+    connect();
+    setInterval(() => { if (!document.hidden) checkConn(6000); }, 2000);
+    // Al volver al navegador o encender la pantalla: si hace rato que no hay noticias del servidor, reconectar ya
+    const revive = () => { if (!document.hidden) { clearTimeout(retryT); retryT = 0; checkConn(2500); } };
+    document.addEventListener('visibilitychange', revive);
+    window.addEventListener('pageshow', revive);
+    window.addEventListener('focus', revive);
+    window.addEventListener('online', () => connect());
+  }
 
   // ---------- Movimiento / scroll con envío agrupado por frame ----------
   let mx = 0, my = 0, sx = 0, sy = 0, raf = 0;

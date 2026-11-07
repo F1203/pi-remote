@@ -14,8 +14,11 @@ from websockets.asyncio.server import serve, broadcast
 from websockets.datastructures import Headers
 from websockets.http11 import Response
 
+import ble
+
 PORT = 8080
 BASE = Path(__file__).resolve().parent
+WEB = BASE / "docs"  # la misma carpeta que publica GitHub Pages
 MODS = {"ctrl": e.KEY_LEFTCTRL, "shift": e.KEY_LEFTSHIFT, "alt": e.KEY_LEFTALT, "logo": e.KEY_LEFTMETA}
 # Nombres de tecla que manda la página -> códigos evdev (las letras no cambian de lugar en es/latam)
 KEYS = {
@@ -27,7 +30,8 @@ KEYS = {
     **{c: getattr(e, f"KEY_{c}") for c in "0123456789"}, ".": e.KEY_DOT, ",": e.KEY_COMMA,
 }
 
-clients = set()
+clients = set()  # conexiones WebSocket del celular y, si hay Bluetooth, el enlace BLE
+ble_link = None
 last_click = {}  # último clic izquierdo pedido desde el celular: id, ws, time
 key_lock = asyncio.Lock()
 
@@ -134,6 +138,19 @@ async def output(text):
 asleep = False
 
 
+def send_to(targets, text):
+    """Como broadcast(), pero también entiende el enlace Bluetooth."""
+    targets = list(targets)
+    if ble_link in targets:
+        targets.remove(ble_link)
+        asyncio.get_running_loop().create_task(ble_link.send(text))
+    broadcast(targets, text)
+
+
+def send_all(text):
+    send_to(clients, text)
+
+
 async def go_to_sleep():
     """Modo reposo: pausa lo que se esté reproduciendo (MPRIS) y apaga la señal de la pantalla."""
     global asleep
@@ -145,7 +162,7 @@ async def go_to_sleep():
                       "/org/mpris/MediaPlayer2", "--method", "org.mpris.MediaPlayer2.Player.Pause"])
     await run("wlopm", "--off", "*")
     asleep = True
-    broadcast(clients, json.dumps({"t": "sleep", "on": True}))
+    send_all(json.dumps({"t": "sleep", "on": True}))
 
 
 async def wake():
@@ -153,7 +170,7 @@ async def wake():
     if asleep:
         asleep = False
         await run("wlopm", "--on", "*")
-        broadcast(clients, json.dumps({"t": "sleep", "on": False}))
+        send_all(json.dumps({"t": "sleep", "on": False}))
 
 
 extensions = set()  # conexiones de la extensión de Brave (/ext)
@@ -227,48 +244,64 @@ async def handle(ws):
         async for raw in ws:
             try:
                 m = json.loads(raw)
-                t = m.get("t")
-                if t == "hb":  # latido del celular: responder sin despertar la pantalla
+                if m.get("t") == "hb":  # latido del celular: responder sin despertar la pantalla
                     await ws.send('{"t":"hb"}')
                     continue
-                if t == "poweroff":
-                    logging.info("apagando la Raspberry Pi por pedido del celular")
-                    await run("systemctl", "poweroff")
-                    continue
-                if t == "sleep":
-                    await go_to_sleep()
-                    continue
-                await wake()  # cualquier otra acción despierta la pantalla
-                if t == "wake":
-                    continue
-                if t == "m":
-                    move(m["x"], m["y"])
-                elif t == "s":
-                    scroll(m.get("x", 0), m.get("y", 0))
-                elif t == "c":
-                    if m.get("b", "l") == "l" and "id" in m:
-                        last_click.update(id=m["id"], ws=ws, time=time.monotonic())
-                    button(m.get("b", "l"), True)
-                    button(m.get("b", "l"), False)
-                elif t == "d":
-                    button(m.get("b", "l"), bool(m.get("down")))
-                elif t == "k":
-                    async with key_lock:  # respetar el orden respecto al texto que escribe wtype
-                        press_key(str(m["k"]), m.get("mods", []))
-                elif t == "txt":
-                    await wtype_text(str(m.get("s", "")), int(m.get("bs", 0)))
-                elif t == "vol":
-                    step = "5%+" if m.get("d", 1) > 0 else "5%-"
-                    await run("wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", step)
-                elif t == "seek":
-                    ok = await seek(float(m.get("s", 85)))
-                    await ws.send(json.dumps({"t": "seekres", "ok": ok}))
-                elif t == "mute":
-                    await run("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle")
+                await dispatch(m, ws)
             except Exception as ex:  # un mensaje malo no debe tirar la conexión
                 logging.warning("mensaje inválido %r: %s", raw, ex)
     finally:
         clients.discard(ws)
+
+
+async def dispatch(m, client):
+    """Ejecuta un mensaje del celular. client tiene send() (WebSocket o enlace Bluetooth)."""
+    t = m.get("t")
+    if t == "hb":
+        return
+    if t == "poweroff":
+        logging.info("apagando la Raspberry Pi por pedido del celular")
+        await run("systemctl", "poweroff")
+        return
+    if t == "sleep":
+        await go_to_sleep()
+        return
+    await wake()  # cualquier otra acción despierta la pantalla
+    if t == "wake":
+        return
+    if t == "m":
+        move(m["x"], m["y"])
+    elif t == "s":
+        scroll(m.get("x", 0), m.get("y", 0))
+    elif t == "c":
+        if m.get("b", "l") == "l" and "id" in m:
+            last_click.update(id=m["id"], ws=client, time=time.monotonic())
+        button(m.get("b", "l"), True)
+        button(m.get("b", "l"), False)
+    elif t == "d":
+        button(m.get("b", "l"), bool(m.get("down")))
+    elif t == "k":
+        async with key_lock:  # respetar el orden respecto al texto que escribe wtype
+            press_key(str(m["k"]), m.get("mods", []))
+    elif t == "txt":
+        await wtype_text(str(m.get("s", "")), int(m.get("bs", 0)))
+    elif t == "vol":
+        step = "5%+" if m.get("d", 1) > 0 else "5%-"
+        await run("wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", step)
+    elif t == "seek":
+        ok = await seek(float(m.get("s", 85)))
+        await client.send(json.dumps({"t": "seekres", "ok": ok}))
+    elif t == "mute":
+        await run("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle")
+
+
+STATIC = {
+    "index.html": "text/html; charset=utf-8",
+    "manifest.webmanifest": "application/manifest+json",
+    "sw.js": "text/javascript",
+    "icon-192.png": "image/png",
+    "icon-512.png": "image/png",
+}
 
 
 def http_response(status, body, ctype):
@@ -293,12 +326,12 @@ def process_request(connection, request):
         logging.info("extensión: clic -> editable=%s", editable)
         ws = last_click.get("ws")
         if ws in clients and time.monotonic() - last_click["time"] < 1.5:
-            broadcast([ws], json.dumps({"t": "clickres", "id": last_click["id"], "editable": editable}))
+            send_to([ws], json.dumps({"t": "clickres", "id": last_click["id"], "editable": editable}))
             last_click.clear()
         return http_response(HTTPStatus.OK, "ok", "text/plain")
-    if path in ("/", "/index.html"):
-        return http_response(HTTPStatus.OK, (BASE / "index.html").read_bytes(),
-                             "text/html; charset=utf-8")
+    name = "index.html" if path == "/" else path.lstrip("/")
+    if name in STATIC:
+        return http_response(HTTPStatus.OK, (WEB / name).read_bytes(), STATIC[name])
     return http_response(HTTPStatus.NOT_FOUND, "not found", "text/plain")
 
 
@@ -313,6 +346,27 @@ def local_ips():
         s.close()
 
 
+async def start_ble():
+    global ble_link
+    link = ble.BleLink(on_message=lambda m: dispatch(m, link),
+                       hello=lambda: json.dumps({"t": "sleep", "on": asleep}),
+                       on_pairing=wake_for_pairing)
+    clients.add(link)
+    ble_link = link
+    try:
+        await link.start()
+    except Exception as ex:  # sin Bluetooth el control por WiFi sigue andando
+        logging.warning("Bluetooth no disponible: %s", ex)
+        clients.discard(link)
+        ble_link = None
+
+
+async def wake_for_pairing():
+    # El código de emparejamiento se muestra en la pantalla: encenderla si estaba en reposo
+    if asleep:
+        await wake()
+
+
 async def main():
     logging.basicConfig(level=logging.INFO)
     logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -321,6 +375,7 @@ async def main():
         print(f"Pi Remote en http://{local_ips()}:{PORT}  o  http://{socket.gethostname()}.local:{PORT}",
               flush=True)
         asyncio.create_task(keep_extension_alive())
+        asyncio.create_task(start_ble())
         await server.serve_forever()
 
 
