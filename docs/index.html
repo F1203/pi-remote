@@ -114,6 +114,7 @@
   <h1>Pi Remote</h1>
   <div id="connmsg">Buscando la Raspberry…</div>
   <button id="connbtn" style="display:none">Conectar</button>
+  <small id="connhint"></small>
   <small>La primera vez elegí «Pi Remote» en la lista y, cuando el celular lo pida, escribí el código que aparece en la pantalla de la Raspberry.</small>
 </div>
 <textarea id="kb" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
@@ -194,6 +195,17 @@
     $('connbtn').style.display = btn ? '' : 'none';
     if (btn) $('connbtn').textContent = btn;
   };
+  // Un dispositivo recordado conecta mejor si antes se "escucha" su anuncio (así lo recomienda Chrome)
+  function heard(d, ms = 8000) {
+    if (!d.watchAdvertisements) return Promise.resolve();
+    return new Promise((resolve) => {
+      const ac = new AbortController();
+      const done = () => { clearTimeout(t); d.removeEventListener('advertisementreceived', done); try { ac.abort(); } catch {} resolve(); };
+      const t = setTimeout(done, ms);
+      d.addEventListener('advertisementreceived', done);
+      d.watchAdvertisements({ signal: ac.signal }).catch(done);
+    });
+  }
   const timeout = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('timeout')), ms))]);
   const retryLater = (ms) => { clearTimeout(bleRetryT); bleRetryT = setTimeout(() => bleConnect(false), ms); };
 
@@ -204,10 +216,17 @@
       if (pick) {
         dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
       } else if (!dev && navigator.bluetooth.getDevices) {
-        // Chrome recuerda el permiso: si ya se eligió la Raspberry antes, reconectar sin preguntar
-        dev = (await navigator.bluetooth.getDevices())[0] || null;
+        // Chrome recuerda la Raspberry elegida antes: reconectar sin mostrar la lista
+        const known = await navigator.bluetooth.getDevices();
+        dev = known.find((d) => /pi remote|raspberry/i.test(d.name || '')) || known[0] || null;
+        if (dev) { connMsg('Buscando la Raspberry…'); await heard(dev); }
       }
-      if (!dev) { connMsg('Tocá Conectar y elegí la Raspberry en la lista.', 'Conectar'); return; }
+      if (!dev) {
+        connMsg('Tocá Conectar y elegí la Raspberry en la lista.', 'Conectar');
+        $('connhint').textContent = navigator.bluetooth.getDevices ? '' :
+          'Para no tener que elegirla cada vez: en Chrome abrí chrome://flags, buscá «Web Bluetooth new permissions backend», ponelo en Enabled y reiniciá Chrome.';
+        return;
+      }
       dev.ongattserverdisconnected = onBleDown;
       connMsg('Conectando con la Raspberry…');
       const server = await timeout(dev.gatt.connect(), 15000);
@@ -219,7 +238,7 @@
       tx.oncharacteristicvaluechanged = (ev) => onBleData(ev.target.value);
       await tx.startNotifications();
       await rxc.writeValueWithResponse(enc.encode('\n')); // descarta restos de una conexión anterior
-      rx = rxc; paired = true;
+      rx = rxc; paired = true; $('connhint').textContent = '';
       onMsg(JSON.parse(new TextDecoder().decode(hello)));
       setOk(true); vibrate(20);
       bq = bq.filter((o) => o.t !== 'm' && o.t !== 's');
@@ -230,6 +249,7 @@
       if (!navigator.bluetooth) return;
       if (err.name === 'NotFoundError' || err.name === 'SecurityError') connMsg(explainBleError(err), 'Conectar');
       else if (paired) { connMsg('Se perdió la conexión. Reintentando…', 'Elegir de nuevo'); if (!document.hidden) retryLater(3000); }
+      else if (dev && !pick) { connMsg('No encontré la Raspberry. ¿Está encendida y cerca?', 'Reintentar'); if (!document.hidden) retryLater(5000); }
       else connMsg('No pude conectar con la Raspberry' + (err.message ? ` (${err.message})` : '') + '.', 'Reintentar');
     } finally { connecting = false; }
   }
