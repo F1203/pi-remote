@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#111418">
+<title>Pi Remote</title>
+<style>
+  :root { --bg:#111418; --panel:#1b2027; --btn:#262d36; --btn-on:#3d7cff; --fg:#e8ecf1; --muted:#8a94a3; --vh:100dvh; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:15px system-ui, sans-serif; overflow:hidden; overscroll-behavior:none; }
+  #app { display:flex; flex-direction:column; height:var(--vh); padding:8px; gap:8px; padding-bottom:max(8px, env(safe-area-inset-bottom)); }
+  .row { display:flex; gap:6px; }
+  .row > button { flex:1; }
+  button { background:var(--btn); color:var(--fg); border:0; border-radius:10px; padding:12px 4px; font-size:17px; min-height:46px; touch-action:manipulation; }
+  button:active, button.pressed { background:#3a4350; }
+  button.on { background:var(--btn-on); }
+  #powerbtn { color:#e5534b; }
+  #powerbtn.armed { background:#c62828; color:#fff; }
+  #padwrap { flex:1; display:flex; gap:6px; min-height:120px; }
+  #pad { flex:1; background:var(--panel); border-radius:14px; position:relative; touch-action:none; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; text-align:center; padding:12px; }
+  #strip { width:54px; background:var(--panel); border-radius:14px; touch-action:none; display:flex; align-items:center; justify-content:center; color:var(--muted); writing-mode:vertical-rl; font-size:12px; }
+  #status { position:absolute; top:10px; left:10px; width:10px; height:10px; border-radius:50%; background:#d33; }
+  #status.ok { background:#2c6; }
+  #kbrow, #settings { display:none; }
+  body.kb #kbrow { display:flex; }
+  body.kb #media { display:none; }
+  body.set #settings { display:flex; }
+  #settings { flex-direction:column; gap:6px; background:var(--panel); border-radius:12px; padding:10px; }
+  #settings label { display:flex; justify-content:space-between; align-items:center; gap:10px; color:var(--muted); }
+  #settings input { flex:1; }
+  #banner { display:none; position:absolute; left:50%; bottom:14px; transform:translateX(-50%); background:var(--btn-on); color:#fff; border-radius:999px; padding:10px 18px; font-size:15px; white-space:nowrap; }
+  body.wantkb #banner { display:block; }
+  button svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; vertical-align:middle; pointer-events:none; }
+  #tip { position:fixed; z-index:10; max-width:80vw; background:#f2f4f7; color:#111; padding:8px 12px; border-radius:8px; font-size:14px; pointer-events:none; opacity:0; transition:opacity .12s; box-shadow:0 4px 14px rgba(0,0,0,.4); }
+  #tip.show { opacity:1; }
+  #sleepov { display:none; position:fixed; inset:0; z-index:5; background:rgba(8,10,12,.92); color:var(--fg); font-size:22px; text-align:center; align-items:center; justify-content:center; flex-direction:column; line-height:1.6; }
+  #sleepov small { color:var(--muted); font-size:15px; }
+  body.asleep #sleepov { display:flex; }
+  #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="row">
+    <button id="powerbtn" data-icon="power" title="Apagar la Raspberry Pi (tocar dos veces)"></button>
+    <button data-k="Tab" data-mods="ctrl,shift" data-icon="tabprev" title="Pestaña anterior"></button>
+    <button data-k="Tab" data-mods="ctrl" data-icon="tabnext" title="Pestaña siguiente"></button>
+    <button data-k="t" data-mods="ctrl" data-kb="1" data-icon="plus" title="Nueva pestaña (abre el teclado)"></button>
+    <button data-k="w" data-mods="ctrl" data-icon="x" title="Cerrar pestaña"></button>
+    <button data-k="l" data-mods="ctrl" data-kb="1" data-icon="search" title="Barra de direcciones (abre el teclado)"></button>
+  </div>
+  <div class="row">
+    <button data-k="Left" data-mods="alt" data-icon="back" title="Página anterior"></button>
+    <button data-k="Right" data-mods="alt" data-icon="fwd" title="Página siguiente"></button>
+    <button data-k="F5" data-icon="reload" title="Recargar página"></button>
+    <button data-k="F11" data-icon="full" title="Pantalla completa del navegador"></button>
+    <button id="setbtn" data-icon="sliders" title="Ajustes de velocidad"></button>
+    <button id="sleepbtn" data-icon="moon" title="Modo reposo: pausa el video y apaga la pantalla. Cualquier botón la vuelve a encender"></button>
+  </div>
+  <div id="settings">
+    <label>Velocidad puntero <input id="sens" type="range" min="0.5" max="4" step="0.1"></label>
+    <label>Velocidad scroll <input id="ssens" type="range" min="0.3" max="4" step="0.1"></label>
+    <label>Scroll natural <input id="natural" type="checkbox" style="flex:0"></label>
+  </div>
+  <div id="padwrap">
+    <div id="pad"><span id="status"></span>
+      1 dedo: mover · toque: clic<br>2 dedos: scroll · toque con 2: clic derecho
+      <div id="banner">Tocá aquí para escribir</div>
+    </div>
+    <div id="strip">scroll</div>
+  </div>
+  <div class="row">
+    <button id="lclick" title="Clic izquierdo">Clic</button>
+    <button id="seekbtn" title="Adelantar el video 1 minuto 25 segundos">+1:25</button>
+    <button id="rclick" title="Clic derecho">Clic der.</button>
+    <button id="kbbtn" data-icon="keyboard" title="Abrir o cerrar el teclado"></button>
+  </div>
+  <div class="row" id="media">
+    <button data-k="Left" data-icon="rew" title="Retroceder el video"></button>
+    <button data-k="space" data-icon="playpause" title="Reproducir / pausar"></button>
+    <button data-k="Right" data-icon="ff" title="Adelantar el video"></button>
+    <button data-k="f" data-icon="expand" title="Video en pantalla completa"></button>
+    <button data-vol="-1" data-icon="voldown" title="Bajar volumen"></button>
+    <button data-vol="1" data-icon="volup" title="Subir volumen"></button>
+    <button data-mute="1" data-icon="mute" title="Silenciar / activar sonido"></button>
+  </div>
+  <div class="row" id="kbrow">
+    <button data-k="Escape" data-keep="1" title="Escape">Esc</button>
+    <button data-k="Tab" data-keep="1" title="Tab (siguiente campo)">Tab</button>
+    <button data-k="Left" data-keep="1" data-icon="left" title="Mover el cursor a la izquierda"></button>
+    <button data-k="Up" data-keep="1" data-icon="up" title="Flecha arriba"></button>
+    <button data-k="Down" data-keep="1" data-icon="down" title="Flecha abajo"></button>
+    <button data-k="Right" data-keep="1" data-icon="right" title="Mover el cursor a la derecha"></button>
+    <button data-k="BackSpace" data-keep="1" data-icon="bksp" title="Borrar"></button>
+    <button data-k="Return" data-close="1" data-icon="enter" title="Enter (y cierra el teclado)"></button>
+    <button id="kbclose" data-icon="kbhide" title="Cerrar el teclado"></button>
+  </div>
+</div>
+<div id="sleepov">Pantalla apagada<br><small>Tocá para encender</small></div>
+<div id="tip"></div>
+<textarea id="kb" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const body = document.body;
+
+  // ---------- Ajustes ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('pr_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('pr_' + k, JSON.stringify(v)); } catch {} },
+  };
+  const cfg = { sens: store.get('sens', 1.6), ssens: store.get('ssens', 1.2), natural: store.get('natural', true) };
+  $('sens').value = cfg.sens; $('ssens').value = cfg.ssens; $('natural').checked = cfg.natural;
+  $('sens').oninput = (ev) => store.set('sens', cfg.sens = +ev.target.value);
+  $('ssens').oninput = (ev) => store.set('ssens', cfg.ssens = +ev.target.value);
+  $('natural').onchange = (ev) => store.set('natural', cfg.natural = ev.target.checked);
+  $('setbtn').onclick = () => body.classList.toggle('set');
+
+  // Mantener la UI por encima del teclado del celular (iOS no redimensiona el layout)
+  const vv = window.visualViewport;
+  const fitVV = () => { if (vv) document.documentElement.style.setProperty('--vh', vv.height + 'px'); window.scrollTo(0, 0); };
+  if (vv) { vv.addEventListener('resize', fitVV); vv.addEventListener('scroll', fitVV); fitVV(); }
+
+  // ---------- WebSocket ----------
+  // Al volver de segundo plano el celular suele dejar una conexión "zombi" que parece abierta pero
+  // está muerta: un latido cada 2 s detecta eso y al volver a la página se reconecta enseguida.
+  let ws, queue = [], lastRx = 0, connStart = 0, retryT = 0, delay = 250;
+  function connect() {
+    clearTimeout(retryT);
+    if (ws) { ws.onopen = ws.onclose = ws.onmessage = null; try { ws.close(); } catch {} }
+    $('status').classList.remove('ok');
+    const s = ws = new WebSocket(`ws://${location.host}/ws`);
+    connStart = Date.now();
+    s.onopen = () => { delay = 250; lastRx = Date.now(); $('status').classList.add('ok'); queue.forEach((m) => s.send(m)); queue = []; };
+    s.onclose = () => { $('status').classList.remove('ok'); retryT = setTimeout(connect, delay); delay = Math.min(delay * 2, 2000); };
+    s.onmessage = (ev) => { lastRx = Date.now(); const m = JSON.parse(ev.data); if (m.t === 'hb') return; if (m.t === 'clickres') onClickResult(m);
+      else if (m.t === 'seekres' && !m.ok) { showTip($('seekbtn'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
+      else if (m.t === 'sleep') body.classList.toggle('asleep', m.on); };
+  }
+  function send(obj) {
+    const m = JSON.stringify(obj);
+    if (ws && ws.readyState === 1) ws.send(m);
+    else if (obj.t !== 'm' && obj.t !== 's') queue.push(m);
+  }
+  connect();
+  function checkConn(maxSilence) {
+    if (ws.readyState === 1) {
+      if (Date.now() - lastRx > maxSilence) connect();
+      else ws.send('{"t":"hb"}');
+    } else if (ws.readyState === 0 ? Date.now() - connStart > 3000 : !retryT) connect();
+  }
+  setInterval(() => { if (!document.hidden) checkConn(6000); }, 2000);
+  // Al volver al navegador o encender la pantalla: si hace rato que no hay noticias del servidor, reconectar ya
+  const revive = () => { if (!document.hidden) { clearTimeout(retryT); retryT = 0; checkConn(2500); } };
+  document.addEventListener('visibilitychange', revive);
+  window.addEventListener('pageshow', revive);
+  window.addEventListener('focus', revive);
+  window.addEventListener('online', () => connect());
+  const vibrate = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+
+  // ---------- Movimiento / scroll con envío agrupado por frame ----------
+  let mx = 0, my = 0, sx = 0, sy = 0, raf = 0;
+  function flush() {
+    raf = 0;
+    const ix = Math.trunc(mx), iy = Math.trunc(my);
+    if (ix || iy) { send({ t: 'm', x: ix, y: iy }); mx -= ix; my -= iy; }
+    const jx = Math.round(sx), jy = Math.round(sy);
+    if (jx || jy) { send({ t: 's', x: jx, y: jy }); sx -= jx; sy -= jy; }
+  }
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(flush); };
+  function addMove(dx, dy) {
+    const v = Math.hypot(dx, dy);
+    const accel = 1 + Math.min(v, 40) / 14; // movimientos rápidos llegan más lejos
+    mx += dx * cfg.sens * accel; my += dy * cfg.sens * accel; schedule();
+  }
+  function addScroll(dx, dy) {
+    const k = cfg.ssens * (cfg.natural ? 1 : -1);
+    // natural: arrastrar hacia arriba baja la página (como una pantalla táctil)
+    sx += dx * k; sy += dy * k; schedule();
+  }
+
+  // ---------- Trackpad ----------
+  const pad = $('pad');
+  let st = null; // estado del gesto actual
+  const center = (tl) => { let x = 0, y = 0; for (const t of tl) { x += t.clientX; y += t.clientY; } return { x: x / tl.length, y: y / tl.length }; };
+
+  // Tocar y volver a apoyar el dedo enseguida = arrastrar (como en los trackpads de notebook).
+  // El clic del primer toque se envía al instante; DRAG_WINDOW es el margen para el segundo toque.
+  const DRAG_WINDOW = 300;
+  let tapTimer = 0;
+
+  pad.addEventListener('touchstart', (ev) => {
+    ev.preventDefault();
+    if (ev.target === $('banner')) return;
+    const c = center(ev.touches);
+    if (!st) {
+      st = { t0: performance.now(), maxFingers: 0, dist: 0, second: false, dragging: false };
+      if (tapTimer) { clearTimeout(tapTimer); tapTimer = 0; st.second = true; }
+    }
+    st.maxFingers = Math.max(st.maxFingers, ev.touches.length);
+    st.last = c; st.n = ev.touches.length;
+  }, { passive: false });
+
+  pad.addEventListener('touchmove', (ev) => {
+    ev.preventDefault();
+    if (!st) return;
+    const c = center(ev.touches);
+    if (ev.touches.length !== st.n) { st.last = c; st.n = ev.touches.length; return; }
+    const dx = c.x - st.last.x, dy = c.y - st.last.y;
+    st.last = c; st.dist += Math.hypot(dx, dy);
+    if (ev.touches.length === 1 && st.maxFingers === 1) {
+      if (st.second && !st.dragging && st.dist > 6) {
+        flush(); send({ t: 'd', b: 'l', down: true }); st.dragging = true; vibrate(25);
+      }
+      addMove(dx, dy);
+    } else if (ev.touches.length >= 2) addScroll(dx, dy);
+  }, { passive: false });
+
+  const endTouch = (ev) => {
+    ev.preventDefault();
+    if (!st) return;
+    if (ev.touches.length) { st.last = center(ev.touches); st.n = ev.touches.length; return; }
+    const isTap = st.dist < 10 && performance.now() - st.t0 < 300;
+    if (st.dragging) {
+      flush(); send({ t: 'd', b: 'l', down: false }); vibrate();
+    } else if (isTap) {
+      if (st.maxFingers === 1) {
+        leftClick();  // si es el segundo toque, el sistema lo toma como doble clic
+        if (!st.second) tapTimer = setTimeout(() => { tapTimer = 0; }, DRAG_WINDOW);
+      }
+      else if (st.maxFingers === 2) { send({ t: 'c', b: 'r' }); vibrate(20); }
+      else if (st.maxFingers >= 3) { send({ t: 'c', b: 'm' }); vibrate(30); }
+    }
+    st = null;
+  };
+  pad.addEventListener('touchend', endTouch, { passive: false });
+  pad.addEventListener('touchcancel', endTouch, { passive: false });
+
+  // Barra lateral de scroll con un dedo
+  const strip = $('strip');
+  let sLast = null;
+  strip.addEventListener('touchstart', (ev) => { ev.preventDefault(); sLast = ev.touches[0].clientY; }, { passive: false });
+  strip.addEventListener('touchmove', (ev) => {
+    ev.preventDefault();
+    const y = ev.touches[0].clientY; addScroll(0, (y - sLast) * 1.5); sLast = y;
+  }, { passive: false });
+
+  // ---------- Botones ----------
+  // touchstart + preventDefault: responde al instante y no le quita el foco al teclado
+  // Íconos (trazos SVG de 24x24)
+  const ICONS = {
+    tabprev: 'M11 17l-5-5 5-5M18 17l-5-5 5-5', tabnext: 'M13 17l5-5-5-5M6 17l5-5-5-5',
+    plus: 'M12 5v14M5 12h14', x: 'M18 6L6 18M6 6l12 12',
+    search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-5-5',
+    back: 'M19 12H5M12 19l-7-7 7-7', fwd: 'M5 12h14M12 5l7 7-7 7',
+    reload: 'M23 4v6h-6M20.5 15a9 9 0 1 1-2.1-9.4L23 10',
+    full: 'M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3',
+    sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
+    keyboard: 'M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10',
+    rew: 'M11 19l-9-7 9-7zM22 19l-9-7 9-7z', ff: 'M13 19l9-7-9-7zM2 19l9-7-9-7z',
+    playpause: 'M3 5l9 7-9 7zM16 5v14M21 5v14', expand: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7',
+    voldown: 'M11 5L6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7',
+    volup: 'M11 5L6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14',
+    mute: 'M11 5L6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6',
+    left: 'M15 18l-6-6 6-6', right: 'M9 18l6-6-6-6', up: 'M18 15l-6-6-6 6', down: 'M6 9l6 6 6-6',
+    kbhide: 'M4 3h16a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM7 10h10M9 18l3 3 3-3',
+    bksp: 'M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zM18 9l-6 6M12 9l6 6',
+    enter: 'M9 10l-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4',
+    moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
+    power: 'M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0',
+  };
+  document.querySelectorAll('[data-icon]').forEach((el) => {
+    el.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24"><path d="${ICONS[el.dataset.icon]}"/></svg>`);
+  });
+
+  // Mantener apretado un botón muestra qué hace (sin ejecutarlo)
+  const tip = $('tip');
+  let tipT = 0;
+  function showTip(el, text = el.title) {
+    tip.textContent = text;
+    tip.classList.add('show');
+    const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8) + 'px';
+    tip.style.top = (r.top - h - 8 < 8 ? r.bottom + 8 : r.top - h - 8) + 'px';
+    clearTimeout(tipT); tipT = setTimeout(() => tip.classList.remove('show'), 1800);
+  }
+
+  // Los botones actúan al soltar: así un toque largo solo muestra la ayuda
+  function tap(el, fn) {
+    let timer = 0, long = false, x0 = 0, y0 = 0;
+    el.addEventListener('touchstart', (ev) => {
+      ev.preventDefault(); el.classList.add('pressed'); long = false;
+      x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY;
+      clearTimeout(timer);
+      timer = setTimeout(() => { long = true; if (el.title) { showTip(el); vibrate(15); } }, 450);
+    }, { passive: false });
+    el.addEventListener('touchmove', (ev) => {
+      const t = ev.touches[0];
+      if (Math.hypot(t.clientX - x0, t.clientY - y0) > 20) { clearTimeout(timer); long = true; el.classList.remove('pressed'); }
+    });
+    el.addEventListener('touchend', (ev) => {
+      ev.preventDefault(); clearTimeout(timer); el.classList.remove('pressed');
+      if (!long) fn(ev);
+    }, { passive: false });
+    el.addEventListener('touchcancel', () => { clearTimeout(timer); el.classList.remove('pressed'); });
+    el.addEventListener('click', (ev) => { if (!('ontouchstart' in window)) fn(ev); });
+  }
+  // Apagar: el primer toque arma el botón (se pone rojo), el segundo dentro de 3 s apaga
+  let powerT = 0;
+  tap($('powerbtn'), () => {
+    const btn = $('powerbtn');
+    if (btn.classList.contains('armed')) {
+      clearTimeout(powerT); btn.classList.remove('armed');
+      send({ t: 'poweroff' }); vibrate(80);
+    } else {
+      btn.classList.add('armed'); showTip(btn, 'Tocá de nuevo para apagar'); vibrate(30);
+      powerT = setTimeout(() => btn.classList.remove('armed'), 3000);
+    }
+  });
+  tap($('sleepbtn'),() => { send({ t: 'sleep' }); vibrate(30); });
+  tap($('sleepov'), () => { send({ t: 'wake' }); vibrate(); });
+  let clickSeq = 0;
+  function leftClick() { send({ t: 'c', b: 'l', id: ++clickSeq }); vibrate(); }
+  tap($('lclick'), leftClick);
+  tap($('rclick'), () => { send({ t: 'c', b: 'r' }); vibrate(20); });
+  tap($('seekbtn'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
+
+  document.querySelectorAll('[data-k]').forEach((el) => tap(el, () => {
+    const mods = el.dataset.mods ? el.dataset.mods.split(',') : [];
+    send({ t: 'k', k: el.dataset.k, mods }); vibrate();
+    if (el.dataset.kb) openKb(); // nueva pestaña / barra de direcciones: abrir teclado
+    else if (el.dataset.close) closeKb();
+  }));
+  document.querySelectorAll('[data-vol]').forEach((el) => tap(el, () => { send({ t: 'vol', d: +el.dataset.vol }); vibrate(); }));
+  document.querySelectorAll('[data-mute]').forEach((el) => tap(el, () => { send({ t: 'mute' }); vibrate(); }));
+
+  // ---------- Teclado ----------
+  const kb = $('kb');
+  const SENT = '​'; // centinela para poder detectar el borrado con el campo "vacío"
+  let prev = SENT;
+  const resetKb = () => { kb.value = SENT; prev = SENT; try { kb.setSelectionRange(1, 1); } catch {} };
+  // Altura de la pantalla sin teclado, para saber si el teclado realmente se mostró
+  let fullH = vv ? vv.height : window.innerHeight;
+  const curH = () => (vv ? vv.height : window.innerHeight);
+  const kbVisible = () => curH() < fullH * 0.8;
+  let checkT = 0;
+  function openKb() {
+    if (!kbVisible()) fullH = Math.max(fullH, curH());
+    if (document.activeElement === kb) kb.blur(); // re-enfocar fuerza a mostrar el teclado si se había ocultado
+    resetKb(); kb.focus();
+    body.classList.add('kb'); body.classList.remove('wantkb');
+    clearTimeout(checkT);
+    // Si el sistema no mostró el teclado (iOS sin toque directo), ofrecer el botón
+    checkT = setTimeout(() => { if (!kbVisible()) { body.classList.add('wantkb'); vibrate(30); } }, 700);
+  }
+  function closeKb() { clearTimeout(checkT); kb.blur(); body.classList.remove('kb', 'wantkb'); }
+  if (vv) vv.addEventListener('resize', () => {
+    if (kbVisible()) body.classList.remove('wantkb');
+    else if (curH() >= fullH * 0.95 && body.classList.contains('kb') && !body.classList.contains('wantkb')) {
+      // El teclado se cerró desde el celular (botón atrás): reflejarlo para poder reabrirlo
+      setTimeout(() => { if (!kbVisible()) { kb.blur(); body.classList.remove('kb'); } }, 300);
+    }
+  });
+  tap($('kbbtn'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
+  tap($('kbclose'), closeKb);
+  // touchend: iOS solo muestra el teclado si focus() ocurre dentro del toque
+  $('banner').addEventListener('touchend', (ev) => { ev.preventDefault(); ev.stopPropagation(); openKb(); }, { passive: false });
+  kb.addEventListener('blur', () => body.classList.remove('kb'));
+
+  kb.addEventListener('input', () => {
+    const cur = kb.value;
+    let p = 0;
+    while (p < prev.length && p < cur.length && prev[p] === cur[p]) p++;
+    const gone = [...prev.slice(p)].filter((ch) => ch !== SENT).length;
+    const bs = gone || (prev.includes(SENT) && !cur.includes(SENT) ? 1 : 0);
+    const s = cur.slice(p).replaceAll(SENT, '').replace(/\n/g, '');
+    if (bs || s) send({ t: 'txt', s, bs });
+    if (cur.includes('\n')) { send({ t: 'k', k: 'Return' }); resetKb(); closeKb(); return; }
+    prev = cur;
+    if (!cur.startsWith(SENT) || cur.length > 200) resetKb();
+  });
+  kb.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); send({ t: 'k', k: 'Return' }); resetKb(); closeKb(); }
+  });
+
+  // La extensión de Brave responde, tras cada clic del celular, si quedó enfocado un campo de texto
+  function onClickResult(m) {
+    if (m.id !== clickSeq) return; // respuesta de un clic viejo
+    if (m.editable) openKb();
+    else closeKb();
+  }
+})();
+</script>
+</body>
+</html>

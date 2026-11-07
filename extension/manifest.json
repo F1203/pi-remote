@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Pi Remote - teclado",
+  "version": "1.2",
+  "description": "Avisa al control remoto cuando se enfoca un campo de texto y adelanta el video de la pestaña activa.",
+  "background": { "service_worker": "bg.js" },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "all_frames": true,
+    "run_at": "document_start"
+  }],
+  "permissions": ["scripting", "alarms"],
+  "host_permissions": ["<all_urls>"]
+}
