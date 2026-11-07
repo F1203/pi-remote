@@ -123,6 +123,11 @@ class Advertisement(ServiceInterface):
     def LocalName(self) -> "s":
         return "Pi Remote"
 
+    @dbus_property(access=PropertyAccess.READ)
+    def Discoverable(self) -> "b":
+        # Agrega los Flags "LE General Discoverable": sin ellos muchos celulares ignoran el anuncio
+        return True
+
     @method()
     def Release(self):
         log.info("BlueZ liberó el anuncio")
