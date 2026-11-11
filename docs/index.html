@@ -103,9 +103,8 @@
     <button data-k="Up" data-keep="1" data-icon="up" title="Flecha arriba"></button>
     <button data-k="Down" data-keep="1" data-icon="down" title="Flecha abajo"></button>
     <button data-k="Right" data-keep="1" data-icon="right" title="Mover el cursor a la derecha"></button>
-    <button data-k="BackSpace" data-keep="1" data-icon="bksp" title="Borrar"></button>
-    <button data-k="Return" data-close="1" data-icon="enter" title="Enter (y cierra el teclado)"></button>
-    <button id="kbclose" data-icon="kbhide" title="Cerrar el teclado"></button>
+    <button data-mod="ctrl" title="Ctrl: queda activo hasta tocarlo de nuevo">Ctrl</button>
+    <button data-mod="shift" title="Shift: queda activo hasta tocarlo de nuevo">Shift</button>
   </div>
 </div>
 <div id="sleepov">Pantalla apagada<br><small>Tocá para encender</small></div>
@@ -497,8 +496,20 @@
   tap($('rclick'), () => { send({ t: 'c', b: 'r' }); vibrate(20); });
   tap($('seekbtn'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
 
+  // Ctrl y Shift fijos: al tocarlos quedan activos (azules) y se suman a todo lo que se teclee
+  const held = new Set();
+  const withHeld = (mods = []) => [...new Set([...mods, ...held])];
+  function setMod(mod, on) {
+    if (on) held.add(mod); else held.delete(mod);
+    document.querySelectorAll(`[data-mod="${mod}"]`).forEach((b) => b.classList.toggle('on', on));
+  }
+  const clearMods = () => [...held].forEach((m) => setMod(m, false));
+  document.querySelectorAll('[data-mod]').forEach((el) => tap(el, () => {
+    setMod(el.dataset.mod, !held.has(el.dataset.mod)); vibrate(20);
+  }));
+
   document.querySelectorAll('[data-k]').forEach((el) => tap(el, () => {
-    const mods = el.dataset.mods ? el.dataset.mods.split(',') : [];
+    const mods = withHeld(el.dataset.mods ? el.dataset.mods.split(',') : []);
     send({ t: 'k', k: el.dataset.k, mods }); vibrate();
     if (el.dataset.kb) openKb(); // nueva pestaña / barra de direcciones: abrir teclado
     else if (el.dataset.close) closeKb();
@@ -525,7 +536,7 @@
     // Si el sistema no mostró el teclado (iOS sin toque directo), ofrecer el botón
     checkT = setTimeout(() => { if (!kbVisible()) { body.classList.add('wantkb'); vibrate(30); } }, 700);
   }
-  function closeKb() { clearTimeout(checkT); kb.blur(); body.classList.remove('kb', 'wantkb'); }
+  function closeKb() { clearTimeout(checkT); kb.blur(); body.classList.remove('kb', 'wantkb'); clearMods(); }
   if (vv) vv.addEventListener('resize', () => {
     if (kbVisible()) body.classList.remove('wantkb');
     else if (curH() >= fullH * 0.95 && body.classList.contains('kb') && !body.classList.contains('wantkb')) {
@@ -534,10 +545,9 @@
     }
   });
   tap($('kbbtn'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
-  tap($('kbclose'), closeKb);
   // touchend: iOS solo muestra el teclado si focus() ocurre dentro del toque
   $('banner').addEventListener('touchend', (ev) => { ev.preventDefault(); ev.stopPropagation(); openKb(); }, { passive: false });
-  kb.addEventListener('blur', () => body.classList.remove('kb'));
+  kb.addEventListener('blur', () => { body.classList.remove('kb'); clearMods(); });
 
   kb.addEventListener('input', () => {
     const cur = kb.value;
@@ -546,14 +556,26 @@
     const gone = [...prev.slice(p)].filter((ch) => ch !== SENT).length;
     const bs = gone || (prev.includes(SENT) && !cur.includes(SENT) ? 1 : 0);
     const s = cur.slice(p).replaceAll(SENT, '').replace(/\n/g, '');
-    if (bs || s) send({ t: 'txt', s, bs });
-    if (cur.includes('\n')) { send({ t: 'k', k: 'Return' }); resetKb(); closeKb(); return; }
+    if (held.size) sendHeld(s, bs);
+    else if (bs || s) send({ t: 'txt', s, bs });
+    if (cur.includes('\n')) { send({ t: 'k', k: 'Return', mods: withHeld() }); resetKb(); if (!held.size) closeKb(); return; }
     prev = cur;
     if (!cur.startsWith(SENT) || cur.length > 200) resetKb();
   });
   kb.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') { ev.preventDefault(); send({ t: 'k', k: 'Return' }); resetKb(); closeKb(); }
+    if (ev.key === 'Enter') { ev.preventDefault(); send({ t: 'k', k: 'Return', mods: withHeld() }); resetKb(); if (!held.size) closeKb(); }
   });
+  // Con Ctrl/Shift activos cada tecla va como atajo (Ctrl+C, Shift+flecha...) en vez de texto
+  const KEYABLE = /^[a-z0-9.,]$/;
+  function sendHeld(s, bs) {
+    for (let i = 0; i < bs; i++) send({ t: 'k', k: 'BackSpace', mods: withHeld() });
+    for (const ch of s) {
+      const low = ch.toLowerCase();
+      if (ch === ' ') send({ t: 'k', k: 'space', mods: withHeld() });
+      else if (KEYABLE.test(low)) send({ t: 'k', k: low, mods: withHeld(ch !== low ? ['shift'] : []) });
+      else send({ t: 'txt', s: ch, bs: 0 }); // tildes, ñ y símbolos: se escriben normal
+    }
+  }
 
   // La extensión de Brave responde, tras cada clic del celular, si quedó enfocado un campo de texto
   function onClickResult(m) {
