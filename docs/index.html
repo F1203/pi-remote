@@ -73,10 +73,13 @@
     <label>Velocidad puntero <input id="sens" type="range" min="0.5" max="4" step="0.1"></label>
     <label>Velocidad scroll <input id="ssens" type="range" min="0.3" max="4" step="0.1"></label>
     <label>Scroll natural <input id="natural" type="checkbox" style="flex:0"></label>
+    <label>Inercia del scroll <input id="inertia" type="checkbox" style="flex:0"></label>
+    <label>Doble toque <input id="dbl" type="range" min="120" max="450" step="10"> <span id="dblv" style="min-width:52px;text-align:right"></span></label>
   </div>
   <div id="padwrap">
     <div id="pad"><span id="status"></span>
-      1 dedo: mover · toque: clic<br>2 dedos: scroll · toque con 2: clic derecho
+      1 dedo: mover · toque: clic · 2 toques: doble clic<br>toque y arrastrar: seleccionar/arrastrar<br>
+      2 dedos: scroll · pellizco: zoom · toque con 2: clic derecho<br>3 dedos ← →: atrás/adelante · toque con 3: clic medio
       <div id="banner">Tocá aquí para escribir</div>
     </div>
     <div id="strip">scroll</div>
@@ -127,8 +130,12 @@
     get(k, d) { try { const v = localStorage.getItem('pr_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem('pr_' + k, JSON.stringify(v)); } catch {} },
   };
-  const cfg = { sens: store.get('sens', 1.6), ssens: store.get('ssens', 1.2), natural: store.get('natural', true) };
+  const cfg = { sens: store.get('sens', 1.6), ssens: store.get('ssens', 1.2), natural: store.get('natural', true),
+    inertia: store.get('inertia', true), dbl: store.get('dbl', 220) };
   $('sens').value = cfg.sens; $('ssens').value = cfg.ssens; $('natural').checked = cfg.natural;
+  $('inertia').checked = cfg.inertia; $('dbl').value = cfg.dbl; $('dblv').textContent = cfg.dbl + ' ms';
+  $('inertia').onchange = (ev) => store.set('inertia', cfg.inertia = ev.target.checked);
+  $('dbl').oninput = (ev) => { store.set('dbl', cfg.dbl = +ev.target.value); $('dblv').textContent = cfg.dbl + ' ms'; };
   $('sens').oninput = (ev) => store.set('sens', cfg.sens = +ev.target.value);
   $('ssens').oninput = (ev) => store.set('ssens', cfg.ssens = +ev.target.value);
   $('natural').onchange = (ev) => store.set('natural', cfg.natural = ev.target.checked);
@@ -282,6 +289,13 @@
     if (!rx && fast) return;
     const last = bq[bq.length - 1];
     if (fast && last && last.t === obj.t) { last.x += obj.x; last.y += obj.y; }
+    else if (obj.t === 'txt' && last && last.t === 'txt') {
+      // Texto y borrados que esperan su turno se juntan en un solo mensaje: al mantener Borrar,
+      // la Raspberry recibe un único «borrá N» en vez de una fila larga que sigue llegando al soltar
+      const a = [...last.s], cut = Math.min(obj.bs, a.length);
+      last.s = a.slice(0, a.length - cut).join('') + obj.s;
+      last.bs += obj.bs - cut;
+    } else if (obj.t === 'z' && last && last.t === 'z') last.d += obj.d;
     else bq.push({ ...obj });
     pump();
   }
@@ -354,22 +368,49 @@
   const pad = $('pad');
   let st = null; // estado del gesto actual
   const center = (tl) => { let x = 0, y = 0; for (const t of tl) { x += t.clientX; y += t.clientY; } return { x: x / tl.length, y: y / tl.length }; };
+  const spread = (tl) => Math.hypot(tl[0].clientX - tl[1].clientX, tl[0].clientY - tl[1].clientY);
 
-  // Tocar y volver a apoyar el dedo enseguida = arrastrar (como en los trackpads de notebook).
-  // El clic del primer toque se envía al instante; DRAG_WINDOW es el margen para el segundo toque.
-  const DRAG_WINDOW = 300;
+  // Tocar y volver a apoyar el dedo antes de cfg.dbl ms: si es otro toque, doble clic; si se
+  // arrastra, arrastrar (como en los trackpads de notebook). Cada clic se envía al instante.
   let tapTimer = 0;
+  const ZOOM_STEP = 1.25; // cuánto hay que abrir/cerrar los dedos para un paso de zoom
+
+  // Inercia: al soltar un scroll rápido, la página sigue un poco y frena sola
+  let inertia = 0;
+  const vel = { x: 0, y: 0, t: 0 };
+  const stopInertia = () => { cancelAnimationFrame(inertia); inertia = 0; };
+  function trackVel(dx, dy) {
+    const now = performance.now(), dt = now - vel.t;
+    if (dt > 80) { vel.x = 0; vel.y = 0; }
+    const k = dt > 80 ? 1 : 0.5, d = Math.max(dt, 8);
+    vel.x = k * dx / d + (1 - k) * vel.x; vel.y = k * dy / d + (1 - k) * vel.y; vel.t = now;
+  }
+  function startInertia() {
+    if (!cfg.inertia || performance.now() - vel.t > 60 || Math.hypot(vel.x, vel.y) < 0.4) return;
+    let vx = vel.x, vy = vel.y, last = performance.now();
+    const step = (now) => {
+      const dt = Math.min(now - last, 50); last = now;
+      const f = Math.pow(0.995, dt); vx *= f; vy *= f;
+      if (Math.hypot(vx, vy) < 0.05) { inertia = 0; return; }
+      addScroll(vx * dt, vy * dt);
+      inertia = requestAnimationFrame(step);
+    };
+    inertia = requestAnimationFrame(step);
+  }
 
   pad.addEventListener('touchstart', (ev) => {
     ev.preventDefault();
     if (ev.target === $('banner')) return;
+    stopInertia();
     const c = center(ev.touches);
     if (!st) {
-      st = { t0: performance.now(), maxFingers: 0, dist: 0, second: false, dragging: false };
+      st = { t0: performance.now(), maxFingers: 0, dist: 0, second: false, dragging: false, mode: null };
       if (tapTimer) { clearTimeout(tapTimer); tapTimer = 0; st.second = true; }
     }
     st.maxFingers = Math.max(st.maxFingers, ev.touches.length);
     st.last = c; st.n = ev.touches.length;
+    if (ev.touches.length === 2) { st.sp0 = spread(ev.touches); st.travel = 0; st.pend = { x: 0, y: 0 }; }
+    if (ev.touches.length >= 3) st.sw = { x: 0, y: 0 };
   }, { passive: false });
 
   pad.addEventListener('touchmove', (ev) => {
@@ -384,24 +425,43 @@
         flush(); send({ t: 'd', b: 'l', down: true }); st.dragging = true; vibrate(25);
       }
       addMove(dx, dy);
-    } else if (ev.touches.length >= 2) addScroll(dx, dy);
+    } else if (ev.touches.length === 2 && st.maxFingers === 2) {
+      // Dos dedos: primero se decide si es pellizco (cambia la separación) o scroll (se mueven juntos)
+      const sp = spread(ev.touches);
+      if (!st.mode) {
+        st.travel += Math.hypot(dx, dy); st.pend.x += dx; st.pend.y += dy;
+        const ds = Math.abs(sp - st.sp0);
+        if (ds > 28 && ds > st.travel * 1.5) { st.mode = 'zoom'; st.spRef = st.sp0; }
+        else if (st.travel > 12) { st.mode = 'scroll'; addScroll(st.pend.x, st.pend.y); }
+      } else if (st.mode === 'scroll') { addScroll(dx, dy); trackVel(dx, dy); }
+      if (st.mode === 'zoom') {
+        const n = Math.trunc(Math.log(sp / st.spRef) / Math.log(ZOOM_STEP));
+        if (n) { send({ t: 'z', d: n }); st.spRef *= ZOOM_STEP ** n; vibrate(8); }
+      }
+    } else if (ev.touches.length >= 3 && st.sw) {
+      // Tres dedos hacia los costados: atrás / adelante (como en Mac)
+      st.sw.x += dx; st.sw.y += dy;
+      if (!st.mode && Math.abs(st.sw.x) > 70 && Math.abs(st.sw.x) > 2 * Math.abs(st.sw.y)) {
+        st.mode = 'swipe'; send({ t: 'k', k: st.sw.x > 0 ? 'Left' : 'Right', mods: ['alt'] }); vibrate(30);
+      }
+    }
   }, { passive: false });
 
   const endTouch = (ev) => {
     ev.preventDefault();
     if (!st) return;
     if (ev.touches.length) { st.last = center(ev.touches); st.n = ev.touches.length; return; }
-    const isTap = st.dist < 10 && performance.now() - st.t0 < 300;
+    const isTap = !st.mode && st.dist < 10 && performance.now() - st.t0 < 300;
     if (st.dragging) {
       flush(); send({ t: 'd', b: 'l', down: false }); vibrate();
     } else if (isTap) {
       if (st.maxFingers === 1) {
-        leftClick();  // si es el segundo toque, el sistema lo toma como doble clic
-        if (!st.second) tapTimer = setTimeout(() => { tapTimer = 0; }, DRAG_WINDOW);
+        leftClick(st.second); // seguido del toque anterior: el sistema lo toma como doble (o triple) clic
+        tapTimer = setTimeout(() => { tapTimer = 0; }, cfg.dbl);
       }
       else if (st.maxFingers === 2) { send({ t: 'c', b: 'r' }); vibrate(20); }
       else if (st.maxFingers >= 3) { send({ t: 'c', b: 'm' }); vibrate(30); }
-    }
+    } else if (st.mode === 'scroll') startInertia();
     st = null;
   };
   pad.addEventListener('touchend', endTouch, { passive: false });
@@ -491,8 +551,8 @@
   tap($('sleepbtn'),() => { send({ t: 'sleep' }); vibrate(30); });
   tap($('sleepov'), () => { send({ t: 'wake' }); vibrate(); });
   let clickSeq = 0;
-  function leftClick() { send({ t: 'c', b: 'l', id: ++clickSeq }); vibrate(); }
-  tap($('lclick'), leftClick);
+  function leftClick(rep) { send({ t: 'c', b: 'l', id: ++clickSeq, ...(rep ? { rep: 1 } : {}) }); vibrate(); }
+  tap($('lclick'), () => leftClick());
   tap($('rclick'), () => { send({ t: 'c', b: 'r' }); vibrate(20); });
   tap($('seekbtn'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
 

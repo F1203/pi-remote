@@ -16,3 +16,18 @@ Control remoto de la Raspberry Pi desde el celular: trackpad, teclado, atajos de
 - `extension/`: extensión de Brave que avisa cuando se enfoca un campo de texto y adelanta videos.
 
 Corre como servicio de usuario: `systemctl --user restart pi-remote`.
+
+## Gestos del trackpad
+
+- 1 dedo: mover · toque: clic · dos toques seguidos: doble clic (tres: triple clic).
+- Toque y volver a apoyar el dedo arrastrando: mantener apretado el clic (seleccionar, arrastrar).
+- 2 dedos juntos: scroll (con inercia al soltar, se puede apagar en ⚙) · toque con 2: clic derecho.
+- Pellizco con 2 dedos: zoom (Ctrl + rueda). Para volver al 100 %: Ctrl fijo + tecla 0.
+- 3 dedos hacia la derecha / izquierda: atrás / adelante · toque con 3: clic medio.
+
+En ⚙ se ajusta **Doble toque**: el tiempo máximo entre dos toques para que cuenten como doble clic
+(o para empezar a arrastrar). El servidor separa los clics sueltos al menos 550 ms para que Brave
+no los junte por su cuenta, aunque el Bluetooth los entregue amontonados.
+
+Al mantener Borrar en el teclado del celular, los borrados que todavía no salieron por Bluetooth
+se juntan en un solo mensaje, así al soltar deja de borrar enseguida.

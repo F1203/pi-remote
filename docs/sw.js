@@ -1,6 +1,6 @@
 // Primero la red (para recibir siempre la última versión) y, sin internet, la copia guardada:
 // la app tiene que abrir igual porque el control va por Bluetooth, no por la red.
-const CACHE = 'pi-remote-v1';
+const CACHE = 'pi-remote-v2';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (ev) => {

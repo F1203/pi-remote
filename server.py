@@ -46,9 +46,16 @@ mouse = UInput(
 BUTTONS = {"l": e.BTN_LEFT, "r": e.BTN_RIGHT, "m": e.BTN_MIDDLE}
 keyboard = UInput({e.EV_KEY: sorted(set(KEYS.values()) | set(MODS.values()))}, name="pi-remote-keyboard")
 scroll_acc = {"v": 0.0, "h": 0.0}
+# Brave/Chromium toma como doble clic dos clics a menos de 500 ms en el mismo lugar. El celular
+# decide qué es doble toque (con el tiempo de sus ajustes); los clics sueltos se separan al menos
+# este tiempo para que el sistema no los junte (pasa mucho con la latencia del Bluetooth).
+DOUBLE_CLICK_GAP = 0.55
+last_left = {"time": 0.0, "moved": True}
 
 
 def move(dx, dy):
+    if dx or dy:
+        last_left["moved"] = True
     mouse.write(e.EV_REL, e.REL_X, int(dx))
     mouse.write(e.EV_REL, e.REL_Y, int(dy))
     mouse.syn()
@@ -68,6 +75,22 @@ def scroll(dx, dy):
             mouse.write(e.EV_REL, lo, notches)
             scroll_acc[axis] -= notches * 120
     mouse.syn()
+
+
+async def zoom(steps):
+    """Pellizco del celular: Ctrl + rueda (un paso de zoom de Brave por cada muesca)."""
+    d = 1 if steps > 0 else -1
+    async with key_lock:
+        keyboard.write(e.EV_KEY, e.KEY_LEFTCTRL, 1)
+        keyboard.syn()
+        await asyncio.sleep(0.01)  # que el compositor vea el Ctrl antes que la rueda
+        for _ in range(min(abs(int(steps)), 5)):
+            mouse.write(e.EV_REL, e.REL_WHEEL_HI_RES, 120 * d)
+            mouse.write(e.EV_REL, e.REL_WHEEL, d)
+            mouse.syn()
+            await asyncio.sleep(0.01)
+        keyboard.write(e.EV_KEY, e.KEY_LEFTCTRL, 0)
+        keyboard.syn()
 
 
 def button(b, down):
@@ -273,9 +296,18 @@ async def dispatch(m, client):
         move(m["x"], m["y"])
     elif t == "s":
         scroll(m.get("x", 0), m.get("y", 0))
+    elif t == "z":
+        await zoom(m.get("d", 0))
     elif t == "c":
-        if m.get("b", "l") == "l" and "id" in m:
-            last_click.update(id=m["id"], ws=client, time=time.monotonic())
+        if m.get("b", "l") == "l":
+            # rep: toque seguido del anterior (doble/triple clic). Si no, que no se junte con el anterior.
+            if not m.get("rep") and not last_left["moved"]:
+                wait = last_left["time"] + DOUBLE_CLICK_GAP - time.monotonic()
+                if wait > 0:
+                    await asyncio.sleep(wait)
+            last_left.update(time=time.monotonic(), moved=False)
+            if "id" in m:
+                last_click.update(id=m["id"], ws=client, time=time.monotonic())
         button(m.get("b", "l"), True)
         button(m.get("b", "l"), False)
     elif t == "d":
