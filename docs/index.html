@@ -150,6 +150,8 @@
   // Abierta desde la Raspberry (http://…:8080): WebSocket por WiFi, como siempre.
   // Abierta desde GitHub Pages (https): Bluetooth LE, sin depender de la IP ni de la red.
   const BLE = location.protocol === 'https:';
+  // Mensajes continuos (mover, scroll, pellizco): si se pierde uno no importa, llega el siguiente
+  const FAST = new Set(['m', 's', 'pu']);
   const vibrate = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
   const setOk = (ok) => { $('status').classList.toggle('ok', ok); body.classList.toggle('offline', BLE && !ok); };
   function onMsg(m) {
@@ -178,7 +180,7 @@
   function wsSend(obj) {
     const m = JSON.stringify(obj);
     if (ws && ws.readyState === 1) ws.send(m);
-    else if (obj.t !== 'm' && obj.t !== 's') queue.push(m);
+    else if (!FAST.has(obj.t)) queue.push(m);
   }
   function checkConn(maxSilence) {
     if (ws.readyState === 1) {
@@ -247,7 +249,7 @@
       rx = rxc; paired = true; $('connhint').textContent = '';
       onMsg(JSON.parse(new TextDecoder().decode(hello)));
       setOk(true); vibrate(20);
-      bq = bq.filter((o) => o.t !== 'm' && o.t !== 's');
+      bq = bq.filter((o) => !FAST.has(o.t));
       pump();
     } catch (err) {
       console.warn('Bluetooth:', err);
@@ -285,18 +287,18 @@
     }
   }
   function bleSend(obj) {
-    const fast = obj.t === 'm' || obj.t === 's';
+    const fast = FAST.has(obj.t);
     if (!rx && fast) return;
     const last = bq[bq.length - 1];
-    if (fast && last && last.t === obj.t) { last.x += obj.x; last.y += obj.y; }
+    if (obj.t === 'pu' && last && last.t === 'pu') last.s = obj.s; // del pellizco solo importa la última medida
+    else if (fast && last && last.t === obj.t) { last.x += obj.x; last.y += obj.y; }
     else if (obj.t === 'txt' && last && last.t === 'txt') {
       // Texto y borrados que esperan su turno se juntan en un solo mensaje: al mantener Borrar,
       // la Raspberry recibe un único «borrá N» en vez de una fila larga que sigue llegando al soltar
       const a = [...last.s], cut = Math.min(obj.bs, a.length);
       last.s = a.slice(0, a.length - cut).join('') + obj.s;
       last.bs += obj.bs - cut;
-    } else if (obj.t === 'z' && last && last.t === 'z') last.d += obj.d;
-    else bq.push({ ...obj });
+    } else bq.push({ ...obj });
     pump();
   }
   async function pump() {
@@ -304,7 +306,7 @@
     writing = true;
     try {
       while (bq.length && rx) {
-        const obj = bq[0], fast = obj.t === 'm' || obj.t === 's';
+        const obj = bq[0], fast = FAST.has(obj.t);
         const data = enc.encode(JSON.stringify(obj) + '\n');
         bq.shift();
         try {
@@ -344,9 +346,10 @@
   }
 
   // ---------- Movimiento / scroll con envío agrupado por frame ----------
-  let mx = 0, my = 0, sx = 0, sy = 0, raf = 0;
+  let mx = 0, my = 0, sx = 0, sy = 0, raf = 0, pinchS = 0;
   function flush() {
     raf = 0;
+    if (pinchS) { send({ t: 'pu', s: Math.round(pinchS * 1000) / 1000 }); pinchS = 0; }
     const ix = Math.trunc(mx), iy = Math.trunc(my);
     if (ix || iy) { send({ t: 'm', x: ix, y: iy }); mx -= ix; my -= iy; }
     const jx = Math.round(sx), jy = Math.round(sy);
@@ -373,7 +376,6 @@
   // Tocar y volver a apoyar el dedo antes de cfg.dbl ms: si es otro toque, doble clic; si se
   // arrastra, arrastrar (como en los trackpads de notebook). Cada clic se envía al instante.
   let tapTimer = 0;
-  const ZOOM_STEP = 1.25; // cuánto hay que abrir/cerrar los dedos para un paso de zoom
 
   // Inercia: al soltar un scroll rápido, la página sigue un poco y frena sola
   let inertia = 0;
@@ -431,13 +433,11 @@
       if (!st.mode) {
         st.travel += Math.hypot(dx, dy); st.pend.x += dx; st.pend.y += dy;
         const ds = Math.abs(sp - st.sp0);
-        if (ds > 28 && ds > st.travel * 1.5) { st.mode = 'zoom'; st.spRef = st.sp0; }
+        if (ds > 28 && ds > st.travel * 1.5) { st.mode = 'zoom'; flush(); send({ t: 'pz', p: 'b' }); vibrate(8); }
         else if (st.travel > 12) { st.mode = 'scroll'; addScroll(st.pend.x, st.pend.y); }
       } else if (st.mode === 'scroll') { addScroll(dx, dy); trackVel(dx, dy); }
-      if (st.mode === 'zoom') {
-        const n = Math.trunc(Math.log(sp / st.spRef) / Math.log(ZOOM_STEP));
-        if (n) { send({ t: 'z', d: n }); st.spRef *= ZOOM_STEP ** n; vibrate(8); }
-      }
+      // Pellizco: la Raspberry imita los dos dedos en un trackpad virtual (zoom como en el celular)
+      if (st.mode === 'zoom') { pinchS = sp / st.sp0; schedule(); }
     } else if (ev.touches.length >= 3 && st.sw) {
       // Tres dedos hacia los costados: atrás / adelante (como en Mac)
       st.sw.x += dx; st.sw.y += dy;
@@ -462,6 +462,7 @@
       else if (st.maxFingers === 2) { send({ t: 'c', b: 'r' }); vibrate(20); }
       else if (st.maxFingers >= 3) { send({ t: 'c', b: 'm' }); vibrate(30); }
     } else if (st.mode === 'scroll') startInertia();
+    if (st.mode === 'zoom') { flush(); send({ t: 'pz', p: 'e' }); }
     st = null;
   };
   pad.addEventListener('touchend', endTouch, { passive: false });

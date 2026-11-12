@@ -22,7 +22,9 @@ Corre como servicio de usuario: `systemctl --user restart pi-remote`.
 - 1 dedo: mover · toque: clic · dos toques seguidos: doble clic (tres: triple clic).
 - Toque y volver a apoyar el dedo arrastrando: mantener apretado el clic (seleccionar, arrastrar).
 - 2 dedos juntos: scroll (con inercia al soltar, se puede apagar en ⚙) · toque con 2: clic derecho.
-- Pellizco con 2 dedos: zoom (Ctrl + rueda). Para volver al 100 %: Ctrl fijo + tecla 0.
+- Pellizco con 2 dedos: zoom como en el celular (agranda la vista alrededor del cursor sin
+  reacomodar la página). El servidor crea un trackpad virtual (`pi-remote-touchpad`) y repite ahí
+  los dos dedos; libinput lo convierte en un gesto de pellizco que Brave (en Wayland) entiende.
 - 3 dedos hacia la derecha / izquierda: atrás / adelante · toque con 3: clic medio.
 
 En ⚙ se ajusta **Doble toque**: el tiempo máximo entre dos toques para que cuenten como doble clic

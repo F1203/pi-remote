@@ -9,7 +9,7 @@ import time
 from http import HTTPStatus
 from pathlib import Path
 
-from evdev import UInput, ecodes as e
+from evdev import AbsInfo, UInput, ecodes as e
 from websockets.asyncio.server import serve, broadcast
 from websockets.datastructures import Headers
 from websockets.http11 import Response
@@ -77,20 +77,78 @@ def scroll(dx, dy):
     mouse.syn()
 
 
-async def zoom(steps):
-    """Pellizco del celular: Ctrl + rueda (un paso de zoom de Brave por cada muesca)."""
-    d = 1 if steps > 0 else -1
-    async with key_lock:
-        keyboard.write(e.EV_KEY, e.KEY_LEFTCTRL, 1)
-        keyboard.syn()
-        await asyncio.sleep(0.01)  # que el compositor vea el Ctrl antes que la rueda
-        for _ in range(min(abs(int(steps)), 5)):
-            mouse.write(e.EV_REL, e.REL_WHEEL_HI_RES, 120 * d)
-            mouse.write(e.EV_REL, e.REL_WHEEL, d)
-            mouse.syn()
-            await asyncio.sleep(0.01)
-        keyboard.write(e.EV_KEY, e.KEY_LEFTCTRL, 0)
-        keyboard.syn()
+# Trackpad virtual: solo para el pellizco. Como libinput lo ve como un trackpad de notebook, el
+# pellizco llega a Brave como gesto y hace el zoom "de celular" (agranda la vista alrededor del
+# cursor sin reacomodar la página), no el zoom de Ctrl + rueda.
+TP_W, TP_H = 4000, 2500  # unidades; 40 por mm = un trackpad de 10 x 6 cm
+_tp_axis = lambda top: AbsInfo(0, 0, top, 0, 0, 40)
+touchpad = UInput(
+    {
+        e.EV_KEY: [e.BTN_LEFT, e.BTN_TOUCH, e.BTN_TOOL_FINGER, e.BTN_TOOL_DOUBLETAP],
+        e.EV_ABS: [(e.ABS_X, _tp_axis(TP_W)), (e.ABS_Y, _tp_axis(TP_H)),
+                   (e.ABS_MT_SLOT, AbsInfo(0, 0, 1, 0, 0, 0)),
+                   (e.ABS_MT_TRACKING_ID, AbsInfo(0, 0, 65535, 0, 0, 0)),
+                   (e.ABS_MT_POSITION_X, _tp_axis(TP_W)), (e.ABS_MT_POSITION_Y, _tp_axis(TP_H))],
+    },
+    name="pi-remote-touchpad",
+    input_props=[e.INPUT_PROP_POINTER, e.INPUT_PROP_BUTTONPAD],
+)
+PINCH_D0 = 300  # media separación inicial de los dedos virtuales (deja lugar para agrandar ~6 veces)
+pinch = {"on": False, "tid": 0, "t0": 0.0, "watchdog": None}
+
+
+def _tp_write(half):
+    """Dos dedos en el centro del trackpad separados 2*half; None = levantarlos."""
+    cx, cy = TP_W // 2, TP_H // 2
+    for slot, sign in ((0, -1), (1, 1)):
+        touchpad.write(e.EV_ABS, e.ABS_MT_SLOT, slot)
+        if half is None:
+            touchpad.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
+            continue
+        if not pinch["on"]:
+            pinch["tid"] = (pinch["tid"] + 1) % 65000
+            touchpad.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, pinch["tid"])
+        touchpad.write(e.EV_ABS, e.ABS_MT_POSITION_X, cx + sign * half)
+        touchpad.write(e.EV_ABS, e.ABS_MT_POSITION_Y, cy)
+    if half is not None:
+        touchpad.write(e.EV_ABS, e.ABS_X, cx - half)
+        touchpad.write(e.EV_ABS, e.ABS_Y, cy)
+    touchpad.write(e.EV_KEY, e.BTN_TOUCH, 0 if half is None else 1)
+    touchpad.write(e.EV_KEY, e.BTN_TOOL_DOUBLETAP, 0 if half is None else 1)
+    touchpad.syn()
+
+
+def _pinch_watchdog():
+    # Si se pierde el aviso de fin (se cortó el Bluetooth), no dejar los dedos virtuales apoyados
+    pinch["watchdog"] = asyncio.get_running_loop().call_later(2, lambda: asyncio.ensure_future(pinch_end()))
+
+
+async def pinch_begin():
+    if pinch["on"]:
+        await pinch_end()
+    _tp_write(PINCH_D0)
+    pinch.update(on=True, t0=time.monotonic())
+    _pinch_watchdog()
+
+
+def pinch_update(scale):
+    if not pinch["on"]:
+        return
+    pinch["watchdog"].cancel()
+    _tp_write(int(min(max(PINCH_D0 * scale, 40), TP_W // 2 - 10)))
+    _pinch_watchdog()
+
+
+async def pinch_end():
+    if not pinch["on"]:
+        return
+    pinch["watchdog"].cancel()
+    # Dos dedos que se apoyan y se levantan rápido son un "toque con 2" = clic derecho: evitarlo
+    wait = pinch["t0"] + 0.3 - time.monotonic()
+    if wait > 0:
+        await asyncio.sleep(wait)
+    _tp_write(None)
+    pinch["on"] = False
 
 
 def button(b, down):
@@ -296,8 +354,10 @@ async def dispatch(m, client):
         move(m["x"], m["y"])
     elif t == "s":
         scroll(m.get("x", 0), m.get("y", 0))
-    elif t == "z":
-        await zoom(m.get("d", 0))
+    elif t == "pz":  # pellizco: p = "b" (empieza) / "e" (termina)
+        await (pinch_begin() if m.get("p") == "b" else pinch_end())
+    elif t == "pu":  # pellizco: s = separación actual / separación al empezar
+        pinch_update(float(m.get("s", 1)))
     elif t == "c":
         if m.get("b", "l") == "l":
             # rep: toque seguido del anterior (doble/triple clic). Si no, que no se junte con el anterior.
