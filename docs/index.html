@@ -25,8 +25,8 @@
   #padwrap { flex:1; display:flex; gap:6px; min-height:120px; }
   #pad { flex:1; background:var(--panel); border-radius:14px; position:relative; touch-action:none; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; text-align:center; padding:12px; }
   #strip { width:54px; background:var(--panel); border-radius:14px; touch-action:none; display:flex; align-items:center; justify-content:center; color:var(--muted); writing-mode:vertical-rl; font-size:12px; }
-  #status { position:absolute; top:10px; left:10px; width:10px; height:10px; border-radius:50%; background:#d33; }
-  #status.ok { background:#2c6; }
+  #status, #tvstatus { position:absolute; top:10px; left:10px; width:10px; height:10px; border-radius:50%; background:#d33; }
+  #status.ok, #tvstatus.ok { background:#2c6; }
   #kbrow, #settings { display:none; }
   body.kb #kbrow { display:flex; }
   body.kb #media { display:none; }
@@ -48,6 +48,32 @@
   #connmsg { font-size:17px; max-width:340px; }
   #connov small { color:var(--muted); font-size:14px; max-width:340px; }
   #connbtn { background:var(--btn-on); padding:14px 32px; font-size:18px; border-radius:999px; }
+  /* Modo tele: cruceta en lugar del trackpad */
+  #tvpad { display:none; flex:1; flex-direction:column; gap:8px; min-height:0; }
+  body.tv #tvpad { display:flex; }
+  body.tv #padwrap, body.tv #clickrow { display:none; }
+  #tvpad .row > button { font-size:15px; }
+  #dpadwrap { flex:1; display:flex; align-items:center; justify-content:center; min-height:0; position:relative; container-type:size; }
+  #dpad { position:relative; width:min(100%, 100cqh, 340px); aspect-ratio:1; border-radius:50%; background:var(--panel); container-type:size; }
+  #dpad button { position:absolute; padding:0; min-height:0; border-radius:50%; background:transparent; }
+  #dpad button:active, #dpad button.pressed { background:#3a4350; }
+  #dpad button svg { width:36px; height:36px; }
+  #dpad [data-nav=up]    { left:33%; top:2%;  width:34%; height:30%; border-radius:40% 40% 20% 20%; }
+  #dpad [data-nav=down]  { left:33%; bottom:2%; width:34%; height:30%; border-radius:20% 20% 40% 40%; }
+  #dpad [data-nav=left]  { top:33%; left:2%;  height:34%; width:30%; border-radius:40% 20% 20% 40%; }
+  #dpad [data-nav=right] { top:33%; right:2%; height:34%; width:30%; border-radius:20% 40% 40% 20%; }
+  #dpad [data-nav=ok] { left:31%; top:31%; width:38%; height:38%; background:var(--btn); font-size:22px; font-weight:600; }
+  #dpad [data-nav=ok]:active, #dpad [data-nav=ok].pressed { background:var(--btn-on); }
+  /* Con un video abierto: panel de reproducción grande; la cruceta se achica para elegir otro */
+  #vidpad { display:none; flex-direction:column; gap:8px; }
+  body.tv.watch #vidpad { display:flex; }
+  body.tv.watch #media, body.tv.watch #tvbottom { display:none; }
+  #vidpad button { min-height:68px; font-size:19px; border-radius:14px; }
+  #vidpad button svg { width:30px; height:30px; }
+  #vidpad .big { flex:1.4; background:#2f3946; }
+  #vidpad .sec button { min-height:52px; font-size:16px; }
+  #vidpad .sec button svg { width:24px; height:24px; }
+  body.kb #vidpad .opt { display:none; }
   #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
 </style>
 </head>
@@ -84,11 +110,51 @@
     </div>
     <div id="strip">scroll</div>
   </div>
-  <div class="row">
-    <button id="lclick" title="Clic izquierdo">Clic</button>
+  <div id="tvpad">
+    <div class="row">
+      <button data-nav="back" data-icon="back" title="Atrás (sale de pantalla completa o vuelve a la página anterior)"> Atrás</button>
+      <button data-nav="home" data-icon="home" title="Inicio de YouTube"> Inicio</button>
+      <button data-nav="search" data-icon="search" title="Buscar en YouTube (abre el teclado)"> Buscar</button>
+    </div>
+    <div id="dpadwrap"><span id="tvstatus"></span>
+      <div id="dpad">
+        <button data-nav="up" data-icon="up" title="Arriba"></button>
+        <button data-nav="left" data-icon="left" title="Izquierda (en el video: atrasa 10 s)"></button>
+        <button data-nav="ok" title="Elegir (en el video: pausa / reproduce)">OK</button>
+        <button data-nav="right" data-icon="right" title="Derecha (en el video: adelanta 10 s)"></button>
+        <button data-nav="down" data-icon="down" title="Abajo"></button>
+      </div>
+    </div>
+    <div class="row" id="tvbottom">
+      <button class="modebtn" data-icon="mouse" title="Cambiar al trackpad"> Trackpad</button>
+      <button id="tvseek" title="Adelantar el video 1 minuto 25 segundos">+1:25</button>
+      <button id="tvkb" data-icon="keyboard" title="Abrir o cerrar el teclado"></button>
+    </div>
+  </div>
+  <div class="row" id="clickrow">
+    <button class="modebtn" data-icon="tv" title="Cambiar al control de tele (cruceta para YouTube y otros sitios)"> Tele</button>
     <button id="seekbtn" title="Adelantar el video 1 minuto 25 segundos">+1:25</button>
     <button id="rclick" title="Clic derecho">Clic der.</button>
     <button id="kbbtn" data-icon="keyboard" title="Abrir o cerrar el teclado"></button>
+  </div>
+  <div id="vidpad">
+    <div class="row">
+      <button data-nav="rw5" data-icon="rew" title="Atrasar 5 segundos"> 5 s</button>
+      <button data-nav="play" data-icon="playpause" class="big" title="Reproducir / pausar"></button>
+      <button data-nav="ff5" data-icon="ff" title="Adelantar 5 segundos"> 5 s</button>
+    </div>
+    <div class="row">
+      <button data-nav="cc" data-icon="cc" title="Activar / desactivar subtítulos"> Subtítulos</button>
+      <button data-nav="full" data-icon="expand" title="Video en pantalla completa (tocar de nuevo para salir)"> Completa</button>
+    </div>
+    <div class="row sec opt">
+      <button class="modebtn" data-icon="mouse" title="Cambiar al trackpad"></button>
+      <button data-vol="-1" data-icon="voldown" title="Bajar volumen"></button>
+      <button data-vol="1" data-icon="volup" title="Subir volumen"></button>
+      <button data-mute="1" data-icon="mute" title="Silenciar / activar sonido"></button>
+      <button id="vidseek" title="Adelantar el video 1 minuto 25 segundos">+1:25</button>
+      <button id="vidkb" data-icon="keyboard" title="Abrir o cerrar el teclado"></button>
+    </div>
   </div>
   <div class="row" id="media">
     <button data-k="Left" data-icon="rew" title="Retroceder el video"></button>
@@ -153,14 +219,16 @@
   // Mensajes continuos (mover, scroll, pellizco): si se pierde uno no importa, llega el siguiente
   const FAST = new Set(['m', 's', 'pu']);
   const vibrate = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
-  const setOk = (ok) => { $('status').classList.toggle('ok', ok); body.classList.toggle('offline', BLE && !ok); };
+  const setOk = (ok) => { $('status').classList.toggle('ok', ok); $('tvstatus').classList.toggle('ok', ok); body.classList.toggle('offline', BLE && !ok); };
   function onMsg(m) {
     if (m.t === 'hb') return;
     if (m.mtu) bleChunk = Math.max(20, Math.min(m.mtu - 3, 509));
     if (m.t === 'clickres') onClickResult(m);
-    else if (m.t === 'seekres' && !m.ok) { showTip($('seekbtn'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
+    else if (m.t === 'seekres' && !m.ok) { showTip($(body.classList.contains('watch') ? 'vidseek' : 'tvseek'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
+    else if (m.t === 'navres') { if (m.editable) openKb(); else if (m.a === 'ok' || m.a === 'back') closeKb(); }
     else if (m.t === 'sleep') body.classList.toggle('asleep', m.on);
     else if (m.t === 'mtu') bleChunk = Math.max(20, Math.min(m.n - 3, 509));
+    if ('watch' in m) body.classList.toggle('watch', !!m.watch); // hay un video abierto en Brave
   }
 
   // ----- WebSocket -----
@@ -500,6 +568,10 @@
     enter: 'M9 10l-5 5 5 5M20 4v7a4 4 0 0 1-4 4H4',
     moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
     power: 'M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0',
+    tv: 'M4 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM8 2l4 5 4-5',
+    home: 'M3 11l9-8 9 8M5 9.5V20h5v-6h4v6h5V9.5',
+    mouse: 'M12 3a6 6 0 0 0-6 6v6a6 6 0 0 0 12 0V9a6 6 0 0 0-6-6zM12 7v4',
+    cc: 'M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM10.5 10a2.5 2.5 0 1 0 0 4M17.5 10a2.5 2.5 0 1 0 0 4',
   };
   document.querySelectorAll('[data-icon]').forEach((el) => {
     el.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24"><path d="${ICONS[el.dataset.icon]}"/></svg>`);
@@ -553,9 +625,40 @@
   tap($('sleepov'), () => { send({ t: 'wake' }); vibrate(); });
   let clickSeq = 0;
   function leftClick(rep) { send({ t: 'c', b: 'l', id: ++clickSeq, ...(rep ? { rep: 1 } : {}) }); vibrate(); }
-  tap($('lclick'), () => leftClick());
   tap($('rclick'), () => { send({ t: 'c', b: 'r' }); vibrate(20); });
   tap($('seekbtn'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
+  tap($('tvseek'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
+
+  // ---------- Modo tele ----------
+  // La cruceta va a la extensión de Brave, que mueve un recuadro por los videos de YouTube
+  // Dos modos en la misma app: trackpad o tele (cruceta). Se recuerda el último; tele.html abre en tele.
+  const setTv = (on) => { body.classList.toggle('tv', on); store.set('tv', on); };
+  setTv(new URLSearchParams(location.search).get('modo') === 'tv' || store.get('tv', false));
+  document.querySelectorAll('.modebtn').forEach((el) => tap(el, () => { setTv(!body.classList.contains('tv')); vibrate(20); }));
+  tap($('vidseek'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
+  tap($('vidkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
+  tap($('tvkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
+  document.querySelectorAll('[data-nav]').forEach((el) => {
+    const a = el.dataset.nav;
+    // Las flechas se repiten mientras se mantienen apretadas
+    if (['up', 'down', 'left', 'right'].includes(a)) {
+      let rep = 0;
+      const stop = () => { clearTimeout(rep); clearInterval(rep); rep = 0; el.classList.remove('pressed'); };
+      el.addEventListener('touchstart', (ev) => {
+        ev.preventDefault(); el.classList.add('pressed');
+        send({ t: 'nav', a }); vibrate();
+        rep = setTimeout(() => { rep = setInterval(() => { send({ t: 'nav', a }); vibrate(5); }, 180); }, 450);
+      }, { passive: false });
+      el.addEventListener('touchend', (ev) => { ev.preventDefault(); stop(); }, { passive: false });
+      el.addEventListener('touchcancel', stop);
+      el.addEventListener('click', () => { if (!('ontouchstart' in window)) send({ t: 'nav', a }); });
+      return;
+    }
+    tap(el, () => {
+      send({ t: 'nav', a }); vibrate(a === 'ok' || a === 'play' ? 20 : 10);
+      if (a === 'search') openKb(); // dentro del toque, para que el celular muestre el teclado
+    });
+  });
 
   // Ctrl y Shift fijos: al tocarlos quedan activos (azules) y se suman a todo lo que se teclee
   const held = new Set();

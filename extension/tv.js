@@ -332,6 +332,12 @@
   }
 
   function move(dir) {
+    // Moverse fuera del buscador también lo cierra (con sus sugerencias)
+    const a = document.activeElement;
+    if (editable(a) && a === cur) { const res = leaveInput(a); go(dir); return res; }
+    return go(dir);
+  }
+  function go(dir) {
     if (!cur || !cur.isConnected || !visible(cur)) { focusEl(start(), !YT); return true; }
     if (!shown) { show(); return true; } // primera flecha después de usar el trackpad: solo mostrar dónde está
     const next = nearest(cur, dir, candidates());
@@ -428,10 +434,36 @@
     return { editable: true };
   }
 
+  // Salir de un buscador sin buscar: cerrar también la lista de sugerencias, que si no queda tapando
+  // media pantalla. Escape real (lo manda el servidor) + quitar el foco; si la lista sigue a la vista,
+  // se esconde hasta la próxima vez que se use el buscador.
+  const SUGGEST = '.ytSearchboxComponentSuggestionsContainer, .sbdd_a, .sbsb_a, .gstl_50, [role=listbox]';
+  const hiddenLists = new Set();
+  function leaveInput(a) {
+    a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+    setTimeout(() => {
+      if (document.activeElement === a) a.blur();
+      setTimeout(() => {
+        for (const el of document.querySelectorAll(SUGGEST)) {
+          if (!visible(el)) continue;
+          el.dataset.pitvDisplay = el.style.display;
+          el.style.display = 'none';
+          hiddenLists.add(el);
+        }
+      }, 250);
+    }, 120);
+    return { key: 'Escape' };
+  }
+  document.addEventListener('focusin', (ev) => {
+    if (!editable(ev.target) || !hiddenLists.size) return;
+    for (const el of hiddenLists) el.style.display = el.dataset.pitvDisplay || '';
+    hiddenLists.clear();
+  }, true);
+
   function back() {
     if (pseudo || document.fullscreenElement) return exitFull();
     const a = document.activeElement;
-    if (editable(a)) { a.blur(); return {}; }
+    if (editable(a)) return leaveInput(a);
     history.back();
     return {};
   }
@@ -487,8 +519,8 @@
     const onPlayer = shown && cur && cur === p;
     if (onPlayer && (a === 'left' || a === 'right')) return media('seek', a === 'left' ? -10 : 10);
     if (a === 'ok') return activate();
-    move(a);
-    return {};
+    const res = move(a);
+    return typeof res === 'object' ? res : {};
   }
 
   chrome.runtime.onMessage.addListener((m, _sender, reply) => {

@@ -35,12 +35,13 @@ no los junte por su cuenta, aunque el Bluetooth los entregue amontonados.
 Al mantener Borrar en el teclado del celular, los borrados que todavía no salieron por Bluetooth
 se juntan en un solo mensaje, así al soltar deja de borrar enseguida.
 
-## Pi Tele (cruceta) — `docs/tele.html`
+## Modo tele (cruceta)
 
-Página aparte, con la cruceta en lugar del trackpad, para usar YouTube en Brave como en un Smart TV:
-`http://raspberry.local:8080/tele.html` o https://f1203.github.io/pi-remote/tele.html (Bluetooth).
-Se puede agregar a la pantalla principal como una app más («Pi Tele»). `index.html` sigue siendo
-el control con trackpad de siempre.
+La app tiene dos modos: **trackpad** y **tele**. El botón de abajo a la izquierda (donde antes
+estaba «Clic»; tocar el trackpad ya hace clic) cambia entre uno y otro, y se recuerda el último.
+En modo tele, la cruceta sirve para usar YouTube (y otros sitios) en Brave como en un Smart TV.
+`tele.html` (y la app instalada «Pi Tele») abre la misma app directo en modo tele
+(`index.html?modo=tv`).
 
 - **Flechas:** mueven un recuadro azul por los videos, los chips, el menú lateral y el buscador
   (cada video es un solo lugar, no cada link como con Tab). Mantenidas, se repiten. Si el video
@@ -51,6 +52,7 @@ el control con trackpad de siempre.
 - **Atrás:** sale de pantalla completa o del buscador, si no vuelve a la página anterior y el
   recuadro queda en el mismo video que se había elegido.
 - **Inicio:** portada de YouTube. **Buscar:** va al buscador y abre el teclado del celular.
+  Al salir sin buscar (Atrás o una flecha) se cierra también la lista de sugerencias.
 - En Shorts, ↑/↓ pasan al anterior/siguiente y OK pausa.
 - **Otros sitios** (probado con animeav1.com): cada tarjeta con imagen (serie, episodio) es un solo
   lugar; en una grilla ↑/↓ pasan a la fila siguiente aunque esté incompleta. El reproductor (un
