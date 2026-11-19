@@ -96,8 +96,15 @@
   // En el centro justo el puntero quedaba visible (sobre el botón grande de play del reproductor):
   // un poco a la derecha. 0.004 de la pantalla ≈ 8 píxeles en 1920.
   const CENTER_X = 0.5 + 0.004;
+  // Con el reproductor agrandado: primero al centro y, cuando la ventana ya terminó de pasar a
+  // pantalla completa, el corrimiento corto a la derecha (ese último movimiento es el que hace
+  // que el reproductor esconda el puntero). Igual al entrar solo que al volver a entrar con Completa.
+  let parkT = 0;
   function parkSpot() {
-    if (pseudo) mouseTo(CENTER_X, 0.5, false, true); else mouseTo(1, 1, false, true);
+    clearTimeout(parkT);
+    if (!pseudo) { mouseTo(1, 1, false, true); return; }
+    mouseTo(0.5, 0.5, false, true);
+    parkT = setTimeout(() => { if (pseudo) mouseTo(CENTER_X, 0.5, false, true); }, 1500);
   }
 
   // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
