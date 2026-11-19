@@ -13,7 +13,8 @@ Control remoto de la Raspberry Pi desde el celular: trackpad, teclado, atajos de
 - `server.py`: servidor (WebSocket + HTTP en el puerto 8080). Inyecta mouse y teclado con `evdev`.
 - `ble.py`: servicio Bluetooth LE (GATT) y agente de emparejamiento con código. Depende de `python3-dbus-fast`.
 - `docs/`: la página. Es la misma que sirve la Pi y la que publica GitHub Pages.
-- `extension/`: extensión de Brave que avisa cuando se enfoca un campo de texto y adelanta videos.
+- `extension/`: extensión de Brave que avisa cuando se enfoca un campo de texto, adelanta videos y
+  hace la navegación del modo tele (`tv.js`).
 
 Corre como servicio de usuario: `systemctl --user restart pi-remote`.
 
@@ -33,3 +34,27 @@ no los junte por su cuenta, aunque el Bluetooth los entregue amontonados.
 
 Al mantener Borrar en el teclado del celular, los borrados que todavía no salieron por Bluetooth
 se juntan en un solo mensaje, así al soltar deja de borrar enseguida.
+
+## Pi Tele (cruceta) — `docs/tele.html`
+
+Página aparte, con la cruceta en lugar del trackpad, para usar YouTube en Brave como en un Smart TV:
+`http://raspberry.local:8080/tele.html` o https://f1203.github.io/pi-remote/tele.html (Bluetooth).
+Se puede agregar a la pantalla principal como una app más («Pi Tele»). `index.html` sigue siendo
+el control con trackpad de siempre.
+
+- **Flechas:** mueven un recuadro azul por los videos, los chips, el menú lateral y el buscador
+  (cada video es un solo lugar, no cada link como con Tab). Mantenidas, se repiten. Si el video
+  elegido está fuera de la pantalla, la página se mueve sola.
+- **OK:** abre lo elegido. Al abrir un video el foco queda en el reproductor: **← / →** atrasan o
+  adelantan 10 s, **OK** pausa (o salta el anuncio si se puede) y **↓** baja a los botones y a los
+  recomendados. En pantalla completa, ↑/↓ salen de ella.
+- **Atrás:** sale de pantalla completa o del buscador, si no vuelve a la página anterior y el
+  recuadro queda en el mismo video que se había elegido.
+- **Inicio:** portada de YouTube. **Buscar:** va al buscador y abre el teclado del celular.
+- En Shorts, ↑/↓ pasan al anterior/siguiente y OK pausa. En otras páginas, la cruceta se mueve
+  entre links y botones.
+- Si se usa el trackpad, el recuadro se esconde; la próxima flecha lo vuelve a mostrar.
+
+El servidor reenvía `{t: "nav", a: ...}` a la extensión (`bg.js` → `tv.js` de la pestaña activa).
+Si la extensión no responde, manda teclas parecidas (flechas, Enter, Alt+←, Ctrl+L).
+Después de cambiar la extensión hay que recargarla en `brave://extensions`.

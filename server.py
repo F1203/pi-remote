@@ -277,22 +277,47 @@ async def mpris_seek(seconds):
     return done
 
 
-async def seek(seconds):
-    """Adelanta el video: primero en la pestaña activa de Brave (vía extensión), si no por MPRIS."""
+async def ask_extension(msg):
+    """Manda una orden a la extensión de Brave y devuelve su respuesta (None si nadie responde)."""
     global seek_seq
     for ext in list(extensions):
         seek_seq += 1
         fut = asyncio.get_running_loop().create_future()
         seek_waiters[seek_seq] = fut
         try:
-            await ext.send(json.dumps({"t": "seek", "s": seconds, "id": seek_seq}))
-            if await asyncio.wait_for(fut, 2):
-                return True
+            await ext.send(json.dumps({**msg, "id": seek_seq}))
+            res = await asyncio.wait_for(fut, 4 if msg.get("t") == "nav" else 2)
+            if res.get("ok"):
+                return res
         except Exception as ex:
-            logging.warning("extensión no respondió al seek: %s", ex)
+            logging.warning("extensión no respondió a %s: %s", msg.get("t"), ex)
         finally:
             seek_waiters.pop(seek_seq, None)
+    return None
+
+
+async def seek(seconds):
+    """Adelanta el video: primero en la pestaña activa de Brave (vía extensión), si no por MPRIS."""
+    if await ask_extension({"t": "seek", "s": seconds}):
+        return True
     return await mpris_seek(seconds)
+
+
+# Modo tele: si la extensión no responde, al menos teclas parecidas
+NAV_KEYS = {"up": ("Up", ()), "down": ("Down", ()), "left": ("Left", ()), "right": ("Right", ()),
+            "ok": ("Return", ()), "back": ("Left", ("alt",)), "search": ("l", ("ctrl",))}
+
+
+async def nav(action):
+    """Cruceta del modo tele. Devuelve si quedó enfocado un campo de texto (para abrir el teclado)."""
+    res = await ask_extension({"t": "nav", "a": action})
+    if res:
+        return bool(res.get("editable"))
+    if action in NAV_KEYS:
+        key, mods = NAV_KEYS[action]
+        async with key_lock:
+            press_key(key, mods)
+    return action == "search"
 
 
 async def handle_extension(ws):
@@ -301,10 +326,10 @@ async def handle_extension(ws):
     try:
         async for raw in ws:
             m = json.loads(raw)
-            if m.get("t") == "seekres":
+            if m.get("t") in ("seekres", "navres"):
                 fut = seek_waiters.get(m.get("id"))
                 if fut and not fut.done():
-                    fut.set_result(bool(m.get("ok")))
+                    fut.set_result(m)
     finally:
         extensions.discard(ws)
 
@@ -383,12 +408,19 @@ async def dispatch(m, client):
     elif t == "seek":
         ok = await seek(float(m.get("s", 85)))
         await client.send(json.dumps({"t": "seekres", "ok": ok}))
+    elif t == "nav":  # modo tele: up/down/left/right/ok/back/home/search
+        a = str(m.get("a", ""))
+        if a in ("up", "down", "left", "right", "ok", "back", "home", "search"):
+            editable = await nav(a)
+            await client.send(json.dumps({"t": "navres", "a": a, "editable": editable}))
     elif t == "mute":
         await run("wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle")
 
 
 STATIC = {
     "index.html": "text/html; charset=utf-8",
+    "tele.html": "text/html; charset=utf-8",
+    "manifest-tele.webmanifest": "application/manifest+json",
     "manifest.webmanifest": "application/manifest+json",
     "sw.js": "text/javascript",
     "icon-192.png": "image/png",

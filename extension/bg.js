@@ -27,13 +27,51 @@ async function seekActiveTab(seconds) {
   return results.some((r) => r.result === true);
 }
 
-// Conexión con el servidor del control remoto para recibir órdenes (adelantar video)
+// Modo tele: pasa la flecha / OK / atrás / inicio / buscar a la página de la pestaña activa (tv.js)
+const isYouTube = (url) => /^https:\/\/(www\.|m\.)?youtube\.com\//.test(url || '');
+function waitLoaded(tabId) {
+  return new Promise((resolve) => {
+    const done = () => { chrome.tabs.onUpdated.removeListener(fn); clearTimeout(t); resolve(); };
+    const fn = (id, info) => { if (id === tabId && info.status === 'complete') done(); };
+    const t = setTimeout(done, 10000);
+    chrome.tabs.onUpdated.addListener(fn);
+  });
+}
+async function tellTab(tabId, nav) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { nav }, { frameId: 0 });
+  } catch {
+    // Pestaña abierta antes de instalar/recargar la extensión: inyectar tv.js y reintentar
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['tv.js'] });
+    return await chrome.tabs.sendMessage(tabId, { nav }, { frameId: 0 });
+  }
+}
+async function navActiveTab(nav) {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab) return { ok: false };
+  // Inicio y Buscar llevan a YouTube aunque se esté en otra página
+  if ((nav === 'home' || nav === 'search') && !isYouTube(tab.url)) {
+    await chrome.tabs.update(tab.id, { url: 'https://www.youtube.com/' });
+    await waitLoaded(tab.id);
+    if (nav === 'home') return { ok: true };
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  return (await tellTab(tab.id, nav)) || { ok: false };
+}
+
+// Conexión con el servidor del control remoto para recibir órdenes (adelantar video, modo tele)
 let ws = null;
 function connect() {
   if (ws && ws.readyState <= 1) return;
   ws = new WebSocket('ws://127.0.0.1:8080/ext');
   ws.onmessage = async (ev) => {
     const m = JSON.parse(ev.data);
+    if (m.t === 'nav') {
+      let res = { ok: false };
+      try { res = await navActiveTab(m.a); } catch {}
+      ws.send(JSON.stringify({ t: 'navres', id: m.id, ok: !!res.ok, editable: !!res.editable }));
+      return;
+    }
     if (m.t !== 'seek') return;
     let ok = false;
     try { ok = await seekActiveTab(m.s); } catch {}

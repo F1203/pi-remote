@@ -1,0 +1,311 @@
+// Modo tele: navegación con la cruceta del celular, como en un Smart TV.
+// El servidor manda {nav: 'up'|'down'|'left'|'right'|'ok'|'back'|'home'|'search'} vía bg.js.
+// En YouTube se mueve entre videos, chips, menú lateral y botones (no por cada link como Tab);
+// en otras páginas, entre links y botones.
+(() => {
+  if (window.__piTv) return; // bg.js puede inyectarlo de nuevo en pestañas viejas
+  window.__piTv = true;
+
+  const YT = /(^|\.)youtube\.com$/.test(location.hostname);
+  // Una "tarjeta" se elige entera: miniatura, título, canal y menú son un solo lugar
+  const CARDS = [
+    'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-grid-video-renderer',
+    'ytd-playlist-renderer', 'ytd-channel-renderer', 'ytd-radio-renderer', 'ytd-compact-radio-renderer',
+    'ytd-playlist-video-renderer', 'ytd-playlist-panel-video-renderer', 'ytd-reel-item-renderer',
+    'ytd-grid-playlist-renderer', 'ytd-movie-renderer', 'ytd-compact-playlist-renderer',
+    'yt-lockup-view-model', 'ytm-shorts-lockup-view-model', 'ytm-shorts-lockup-view-model-v2',
+  ].join(',');
+  const YT_OTHERS = [
+    'input[name="search_query"]', '#guide-button', 'ytd-topbar-logo-renderer a',
+    'yt-chip-cloud-chip-renderer', 'ytd-guide-entry-renderer', 'ytd-mini-guide-entry-renderer',
+    'yt-tab-shape', 'tp-yt-paper-tab', '#page-header button', 'ytd-watch-metadata button',
+    'ytd-watch-metadata #owner a', 'ytd-subscribe-button-renderer button',
+    'ytd-rich-shelf-renderer #button button', 'ytd-continuation-item-renderer button',
+  ].join(',');
+  const GENERIC = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=tab], [tabindex]:not([tabindex="-1"])';
+  const TEXT_IN = /^(text|search|email|url|tel|password|number)$/i;
+
+  let cur = null;        // elemento enfocado
+  let shown = false;     // si el recuadro está visible
+  const memo = new Map(); // url -> link del último video elegido, para volver al mismo al ir atrás
+
+  // ---------- Recuadro de foco ----------
+  const ring = document.createElement('div');
+  ring.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:4px solid #fff;'
+    + 'border-radius:14px;box-shadow:0 0 0 3px #3d7cff,0 0 28px 6px rgba(61,124,255,.65);'
+    + 'transition:left .12s,top .12s,width .12s,height .12s;display:none;box-sizing:border-box';
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;left:50%;top:12%;'
+    + 'transform:translateX(-50%);background:rgba(0,0,0,.75);color:#fff;font:600 34px system-ui,sans-serif;'
+    + 'padding:14px 30px;border-radius:999px;display:none';
+  let toastT = 0;
+  function say(text) {
+    (document.fullscreenElement || document.documentElement).appendChild(toast);
+    toast.textContent = text; toast.style.display = 'block';
+    clearTimeout(toastT); toastT = setTimeout(() => { toast.style.display = 'none'; }, 900);
+  }
+
+  function place() {
+    if (!shown) return;
+    if (!cur || !cur.isConnected || document.fullscreenElement) { ring.style.display = 'none'; }
+    else {
+      const r = cur.getBoundingClientRect(), pad = 4;
+      Object.assign(ring.style, { display: 'block', left: r.left - pad + 'px', top: r.top - pad + 'px',
+        width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
+    }
+    requestAnimationFrame(place);
+  }
+  function show() {
+    if (!ring.isConnected) document.documentElement.appendChild(ring);
+    if (!shown) { shown = true; requestAnimationFrame(place); }
+  }
+  function hide() { shown = false; ring.style.display = 'none'; }
+  // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
+  window.addEventListener('mousemove', (ev) => {
+    if (shown && ev.isTrusted && Math.abs(ev.movementX) + Math.abs(ev.movementY) > 3) hide();
+  }, true);
+
+  // ---------- Candidatos ----------
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8) return false;
+    if (el.checkVisibility && !el.checkVisibility({ visibilityProperty: true, opacityProperty: false })) return false;
+    return true;
+  };
+  const player = () => YT && location.pathname === '/watch' && document.querySelector('#movie_player');
+  const isShorts = () => YT && location.pathname.startsWith('/shorts');
+
+  function candidates() {
+    let list;
+    if (YT) {
+      list = [...document.querySelectorAll(CARDS)].filter((el) => !el.parentElement.closest(CARDS));
+      list.push(...[...document.querySelectorAll(YT_OTHERS)].filter((el) => !el.closest(CARDS)));
+      const p = player();
+      if (p) list.push(p);
+    } else {
+      const all = [...document.querySelectorAll(GENERIC)];
+      const set = new Set(all);
+      list = all.filter((el) => { for (let a = el.parentElement; a; a = a.parentElement) if (set.has(a)) return false; return true; });
+    }
+    // Lo que está dentro del reproductor no cuenta (el reproductor es un solo lugar)
+    const p = player();
+    return list.filter((el) => (!p || el === p || !p.contains(el)) && visible(el));
+  }
+
+  // Lo que flota (barra de arriba, menú lateral: position fixed/sticky) se trata aparte del contenido:
+  // si no, un video scrolleado y tapado por la barra parecería estar "arriba" del buscador.
+  let floatCache = new WeakMap();
+  function floating(el) {
+    if (!el || el === document.body || el === document.documentElement || el.nodeType !== 1) return false;
+    if (floatCache.has(el)) return floatCache.get(el);
+    const pos = getComputedStyle(el).position;
+    const v = pos === 'fixed' || pos === 'sticky' || floating(el.parentElement || el.getRootNode().host);
+    floatCache.set(el, v);
+    return v;
+  }
+  // Que se vea de verdad en pantalla (no tapado por la barra ni fuera de la vista)
+  function uncovered(el) {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + Math.min(r.height / 2, 40);
+    if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
+    const hit = document.elementFromPoint(x, y);
+    return !!hit && (hit === el || el.contains(hit));
+  }
+
+  // Elige el más cercano en esa dirección, prefiriendo el que está "en la misma fila/columna"
+  function pick(from, dir, list) {
+    const a = from.getBoundingClientRect();
+    const acx = a.left + a.width / 2, acy = a.top + a.height / 2;
+    let best = null, bestScore = Infinity;
+    for (const el of list) {
+      if (el === from || el.contains(from) || from.contains(el)) continue;
+      const b = el.getBoundingClientRect();
+      const bcx = b.left + b.width / 2, bcy = b.top + b.height / 2;
+      let gap, ortho, center;
+      const tolY = Math.min(a.height, b.height) * 0.3, tolX = Math.min(a.width, b.width) * 0.3;
+      if (dir === 'down') { if (b.top < a.bottom - tolY || bcy <= acy) continue; gap = b.top - a.bottom; }
+      else if (dir === 'up') { if (b.bottom > a.top + tolY || bcy >= acy) continue; gap = a.top - b.bottom; }
+      else if (dir === 'right') { if (b.left < a.right - tolX || bcx <= acx) continue; gap = b.left - a.right; }
+      else { if (b.right > a.left + tolX || bcx >= acx) continue; gap = a.left - b.right; }
+      if (dir === 'up' || dir === 'down') {
+        ortho = Math.max(0, b.left - a.right, a.left - b.right); center = Math.abs(bcx - acx);
+      } else {
+        ortho = Math.max(0, b.top - a.bottom, a.top - b.bottom); center = Math.abs(bcy - acy);
+      }
+      const score = Math.max(0, gap) + ortho * 4 + center * 0.15;
+      if (score < bestScore) { bestScore = score; best = el; }
+    }
+    return best;
+  }
+  function nearest(from, dir, list) {
+    if (floating(from)) {
+      // Desde la barra o el menú: a otro lugar fijo o a algo del contenido que se vea en pantalla
+      return pick(from, dir, list.filter((el) => floating(el) || uncovered(el)));
+    }
+    // Desde el contenido: primero el contenido (aunque esté fuera de la vista, así se scrollea)
+    return pick(from, dir, list.filter((el) => !floating(el)))
+      || pick(from, dir, list.filter((el) => floating(el)));
+  }
+
+  const linkOf = (el) => {
+    const a = el.matches('a[href]') ? el : el.querySelector(
+      'a#thumbnail[href], a[href*="/watch"], a[href^="/shorts/"], a[href*="/playlist"], a#main-link[href], a[href]');
+    return a ? a.getAttribute('href') : null;
+  };
+
+  // Lugar de partida: lo que recordamos de esta página, el reproductor o el primer video a la vista
+  function start() {
+    const list = candidates();
+    const key = memo.get(location.href);
+    if (key) {
+      const hit = list.find((el) => el.matches(CARDS) && linkOf(el) === key);
+      if (hit) return hit;
+    }
+    const p = player();
+    if (p) return p;
+    const top = YT ? 60 : 0;
+    const inView = list.filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.top >= top - 4 && r.bottom <= innerHeight + r.height * 0.5 && r.left >= 0;
+    });
+    const main = YT ? inView.filter((el) => el.matches(CARDS)) : [];
+    const pool = main.length ? main : inView.length ? inView : list;
+    pool.sort((x, y) => {
+      const a = x.getBoundingClientRect(), b = y.getBoundingClientRect();
+      return Math.abs(a.top - b.top) > 20 ? a.top - b.top : a.left - b.left;
+    });
+    return pool[0] || null;
+  }
+
+  function focusEl(el) {
+    cur = el;
+    show();
+    if (!el) return;
+    if (el.matches(CARDS)) { const k = linkOf(el); if (k) memo.set(location.href, k); }
+    const r = el.getBoundingClientRect();
+    const top = YT ? 64 : 0;
+    if (r.top < top || r.bottom > innerHeight - 8) {
+      const big = r.height > innerHeight * 0.7;
+      el.scrollIntoView({ block: big ? 'start' : 'center', inline: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  function move(dir) {
+    if (!cur || !cur.isConnected || !visible(cur)) { focusEl(start()); return true; }
+    if (!shown) { show(); return true; } // primera flecha después de usar el trackpad: solo mostrar dónde está
+    const next = nearest(cur, dir, candidates());
+    if (next) focusEl(next);
+    else if (dir === 'down' || dir === 'up') scrollBy({ top: (dir === 'down' ? 1 : -1) * innerHeight * 0.6, behavior: 'smooth' });
+    return true;
+  }
+
+  // ---------- Reproductor ----------
+  const video = () => document.querySelector('#movie_player video, video');
+  function seek(s) {
+    const v = video();
+    if (!v) return;
+    const end = Number.isFinite(v.duration) ? v.duration - 0.5 : Infinity;
+    v.currentTime = Math.max(0, Math.min(v.currentTime + s, end));
+    say((s > 0 ? '+' : '−') + Math.abs(s) + ' s');
+  }
+  function togglePlay() {
+    const skip = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button');
+    if (skip && visible(skip)) { skip.click(); say('Saltar anuncio'); return; }
+    const v = video();
+    if (!v) return;
+    if (v.paused) { v.play(); say('▶'); } else { v.pause(); say('❚❚'); }
+  }
+
+  // ---------- Acciones ----------
+  const editable = (el) => el && (el.isContentEditable || el.tagName === 'TEXTAREA'
+    || (el.tagName === 'INPUT' && TEXT_IN.test(el.type || 'text')));
+
+  function activate() {
+    if (!cur || !cur.isConnected || !shown) { move('down'); return {}; }
+    if (cur === player()) { togglePlay(); return {}; }
+    if (editable(cur)) { cur.focus(); if (cur.select) cur.select(); return { editable: true }; }
+    let target = cur;
+    if (YT && cur.matches(CARDS)) {
+      target = cur.querySelector('a#thumbnail[href], a[href*="/watch"], a[href^="/shorts/"], a[href*="/playlist"], a#main-link[href], a[href]') || cur;
+    } else if (!cur.matches('a, button, input, select, [role=button], [role=tab]')) {
+      target = cur.querySelector('a[href], button, [role=button], [role=tab]') || cur;
+    }
+    target.click();
+    return {};
+  }
+
+  function search() {
+    const input = document.querySelector('input[name="search_query"]');
+    if (!input) return { ok: false };
+    focusEl(input);
+    input.focus(); input.select();
+    return { editable: true };
+  }
+
+  function back() {
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    const a = document.activeElement;
+    if (editable(a)) { a.blur(); return; }
+    history.back();
+  }
+
+  function home() {
+    const logo = document.querySelector('ytd-topbar-logo-renderer a, a#logo');
+    if (logo && location.pathname !== '/') logo.click();
+    else if (location.pathname === '/') { scrollTo({ top: 0, behavior: 'smooth' }); focusEl(null); setTimeout(() => focusEl(start()), 400); }
+    else location.href = 'https://www.youtube.com/';
+  }
+
+  function shorts(dir) {
+    const btn = document.querySelector(`#navigation-button-${dir} button`);
+    if (btn) btn.click();
+    else document.dispatchEvent(new KeyboardEvent('keydown', { key: dir === 'down' ? 'ArrowDown' : 'ArrowUp', bubbles: true }));
+  }
+
+  function nav(a) {
+    const onPlayer = shown && cur && cur === player();
+    if (a === 'search') return search();
+    if (a === 'home') { home(); return {}; }
+    if (a === 'back') { back(); return {}; }
+    if (isShorts() && ['up', 'down', 'ok'].includes(a)) {
+      if (a === 'ok') togglePlay(); else shorts(a);
+      hide(); return {};
+    }
+    if (document.fullscreenElement && player()) {
+      // Viendo en pantalla completa: ←/→ adelantan, OK pausa, ↑/↓ salen para elegir otra cosa
+      if (a === 'left' || a === 'right') { seek(a === 'left' ? -10 : 10); return {}; }
+      if (a === 'ok') { togglePlay(); return {}; }
+      document.exitFullscreen(); cur = player(); show(); return {};
+    }
+    if (onPlayer && (a === 'left' || a === 'right')) { seek(a === 'left' ? -10 : 10); return {}; }
+    if (a === 'ok') return activate();
+    move(a);
+    return {};
+  }
+
+  chrome.runtime.onMessage.addListener((m, _sender, reply) => {
+    if (!m || !m.nav) return;
+    let res = {};
+    try { res = nav(m.nav) || {}; } catch (ex) { res = { ok: false, err: String(ex) }; }
+    reply({ ok: res.ok !== false, editable: !!res.editable });
+  });
+
+  // YouTube cambia de página sin recargar: al terminar, elegir de nuevo dónde empezar
+  if (YT) {
+    window.addEventListener('yt-navigate-finish', () => {
+      const a = document.activeElement;
+      if (a && a.matches && a.matches('input[name="search_query"]')) a.blur(); // que espacio vuelva a pausar
+      const was = shown;
+      cur = null;
+      floatCache = new WeakMap();
+      if (!was) return;
+      hide();
+      // esperar a que se dibujen los videos
+      let tries = 0;
+      const t = setInterval(() => {
+        const el = start();
+        if ((el && (el === player() || el.matches(CARDS))) || ++tries > 20) { clearInterval(t); focusEl(el); }
+      }, 150);
+    });
+  }
+})();
