@@ -64,8 +64,9 @@ En modo tele, la cruceta sirve para usar YouTube (y otros sitios) en Brave como 
   sitio y, si ya se está ahí, a YouTube.
 - Si se usa el trackpad, el recuadro se esconde; la próxima flecha lo vuelve a mostrar.
 - **Pantalla completa automática:** usando la cruceta, al poner un video entra solo en pantalla
-  completa (YouTube: cuando arranca, con la tecla f real; otros sitios: al entrar al episodio el
-  reproductor ocupa toda la pantalla y OK lo arranca). Una vez por video: si se sale con Atrás o
+  completa (YouTube: apenas aparece el reproductor, con la tecla f real; otros sitios: al entrar al
+  episodio el reproductor ocupa toda la pantalla y a los 2 s se le da play, con clic real si hace
+  falta y sin tocarlo si ya arrancó solo). Una vez por video: si se sale con Atrás o
   ↑/↓, no vuelve a entrar. Si se estaba usando el trackpad, no pasa.
 - **Puntero escondido:** al usar la cruceta, el puntero se va a la esquina de abajo a la derecha
   (queda fuera de la pantalla). Lo mueve un mouse absoluto virtual del servidor (`pi-remote-abs`).

@@ -552,23 +552,31 @@
     if (YT) {
       if (location.pathname !== '/watch') return;
       fullDone.add(href);
-      // Esperar a que arranque (la tecla f de YouTube necesita el reproductor listo)
-      for (let i = 0; i < 50; i++) {
-        const v = video();
-        if (v && !v.paused && v.currentTime > 0) break;
-        await sleep(300);
+      // Apenas existe el reproductor (sin esperar a que cargue el video); si la f llegó demasiado
+      // pronto y no entró, reintentar
+      for (let i = 0; i < 30 && !document.querySelector('#movie_player video'); i++) {
+        await sleep(100);
         if (location.href !== href) return;
       }
-      if (document.fullscreenElement || !wasActive()) return;
-      const a = document.activeElement;
-      if (editable(a)) a.blur(); // que la f no se escriba en el buscador
-      try { chrome.runtime.sendMessage({ key: 'f' }); } catch {} // tecla real (necesita un gesto de verdad)
+      for (let intento = 0; intento < 3; intento++) {
+        if (document.fullscreenElement || !wasActive() || location.href !== href) return;
+        const a = document.activeElement;
+        if (editable(a)) a.blur(); // que la f no se escriba en el buscador
+        try { chrome.runtime.sendMessage({ key: 'f' }); } catch {} // tecla real (necesita un gesto de verdad)
+        await sleep(1200);
+      }
     } else {
       const p = player();
       if (!p) return;
       fullDone.add(href);
       setPseudo(p); cur = p;
       try { chrome.runtime.sendMessage({ winFull: true }); } catch {}
+      // Y darle play: esperar a que la ventana termine de agrandarse y el reproductor cargue;
+      // bg.js no lo toca si ya se está reproduciendo y, si hace falta, pide el clic real
+      await sleep(2000);
+      if (location.href === href && pseudo === p) {
+        try { chrome.runtime.sendMessage({ autoplay: true }); } catch {}
+      }
     }
   }
 

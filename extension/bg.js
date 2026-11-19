@@ -7,6 +7,10 @@ chrome.runtime.onMessage.addListener((m, sender) => {
     if (sender.tab) setWindowFull(sender.tab.windowId, !!m.winFull).catch(() => {});
     return;
   }
+  if (m && m.autoplay) { // tv.js: arrancar el video si todavía no se está reproduciendo
+    if (sender.tab) autoplay(sender.tab.id).catch(() => {});
+    return;
+  }
   if (m && m.mouse) { // tv.js: mover el puntero / clic real (lo hace el servidor)
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'mouse', ...m.mouse }));
     return;
@@ -93,6 +97,22 @@ async function runMedia(tabId, cmd, s) {
   if (text) chrome.tabs.sendMessage(tabId, { toast: text }, { frameId: 0 }).catch(() => {});
   // Sin video para pausar: que el servidor pruebe con la barra espaciadora
   return { ok: cmd !== 'play' || !!r };
+}
+
+// Se ejecuta en cada frame: si hay un video reproduciéndose
+function isPlaying() {
+  const videos = [];
+  const collect = (root) => {
+    root.querySelectorAll('video').forEach((v) => videos.push(v));
+    root.querySelectorAll('*').forEach((el) => el.shadowRoot && collect(el.shadowRoot));
+  };
+  collect(document);
+  return videos.some((v) => !v.paused && v.readyState > 2);
+}
+async function autoplay(tabId) {
+  const results = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: isPlaying });
+  if (results.some((r) => r.result)) return; // ya arrancó solo
+  await runMedia(tabId, 'play');            // por código; si no se puede, clic real en el centro
 }
 
 // Pantalla completa de la ventana (para el reproductor agrandado por tv.js)
