@@ -1,4 +1,12 @@
 chrome.runtime.onMessage.addListener((m, sender) => {
+  if (m && m.key) { // tv.js: tecla real (la f de pantalla completa de YouTube)
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'key', k: m.key }));
+    return;
+  }
+  if (m && 'winFull' in m) { // tv.js agrandó el reproductor: ventana en pantalla completa
+    if (sender.tab) setWindowFull(sender.tab.windowId, !!m.winFull).catch(() => {});
+    return;
+  }
   if (m && m.mouse) { // tv.js: mover el puntero / clic real (lo hace el servidor)
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'mouse', ...m.mouse }));
     return;
@@ -163,7 +171,12 @@ async function reportState() {
   ws.send(JSON.stringify({ t: 'tvstate', watch }));
 }
 chrome.tabs.onActivated.addListener(() => reportState());
-chrome.tabs.onUpdated.addListener((id, info) => { if (info.url) { watchByTab.delete(id); reportState(); } });
+chrome.tabs.onUpdated.addListener((id, info, tab) => {
+  if (!info.url) return;
+  watchByTab.delete(id); reportState();
+  // Se fue de la página con el reproductor agrandado: devolver la ventana a como estaba
+  if (prevState[tab.windowId] && tab.active) setWindowFull(tab.windowId, false).catch(() => {});
+});
 chrome.tabs.onRemoved.addListener((id) => watchByTab.delete(id));
 chrome.windows.onFocusChanged.addListener(() => reportState());
 

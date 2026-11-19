@@ -374,7 +374,10 @@ async def handle_extension(ws):
     try:
         async for raw in ws:
             m = json.loads(raw)
-            if m.get("t") == "mouse":  # modo tele: mover el puntero (y hacer clic) en un punto
+            if m.get("t") == "key" and m.get("k") in ("f",):  # modo tele: pantalla completa de YouTube
+                async with key_lock:
+                    press_key(m["k"])
+            elif m.get("t") == "mouse":  # modo tele: mover el puntero (y hacer clic) en un punto
                 await wake()
                 await abs_move(float(m.get("fx", 1)), float(m.get("fy", 1)), bool(m.get("click")))
             elif m.get("t") == "tvstate":

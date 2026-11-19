@@ -535,10 +535,42 @@
     const t = setInterval(() => {
       const el = start();
       // Al entrar a una página, la tarjeta elegida queda centrada en la pantalla
-      if ((el && (el === player() || isCard(el))) || ++tries > 20) { clearInterval(t); if (el) focusEl(el, !YT); }
+      if ((el && (el === player() || isCard(el))) || ++tries > 20) {
+        clearInterval(t);
+        if (el) focusEl(el, !YT);
+        if (el && el === player()) autoFull();
+      }
     }, 150);
   }
   if (wasActive()) setTimeout(resume, 300);
+
+  // Modo tele: al poner un video, pantalla completa sola (una vez por video; si se sale, se respeta)
+  const fullDone = new Set();
+  async function autoFull() {
+    const href = location.href;
+    if (!wasActive() || fullDone.has(href) || document.fullscreenElement || pseudo) return;
+    if (YT) {
+      if (location.pathname !== '/watch') return;
+      fullDone.add(href);
+      // Esperar a que arranque (la tecla f de YouTube necesita el reproductor listo)
+      for (let i = 0; i < 50; i++) {
+        const v = video();
+        if (v && !v.paused && v.currentTime > 0) break;
+        await sleep(300);
+        if (location.href !== href) return;
+      }
+      if (document.fullscreenElement || !wasActive()) return;
+      const a = document.activeElement;
+      if (editable(a)) a.blur(); // que la f no se escriba en el buscador
+      try { chrome.runtime.sendMessage({ key: 'f' }); } catch {} // tecla real (necesita un gesto de verdad)
+    } else {
+      const p = player();
+      if (!p) return;
+      fullDone.add(href);
+      setPseudo(p); cur = p;
+      try { chrome.runtime.sendMessage({ winFull: true }); } catch {}
+    }
+  }
 
   // Avisar si en esta página hay un video (el celular muestra los controles del video)
   let lastWatch = null;
@@ -560,9 +592,9 @@
       const was = shown;
       cur = null;
       floatCache = new WeakMap();
-      if (!was) return;
+      if (!was) { autoFull(); return; }
       hide();
-      resume(); // esperar a que se dibujen los videos
+      resume(); // esperar a que se dibujen los videos (y si es un video, pantalla completa)
     });
   }
 })();
