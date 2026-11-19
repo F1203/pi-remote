@@ -634,7 +634,10 @@
   // Dos modos en la misma app: trackpad o tele (cruceta). Se recuerda el último; tele.html abre en tele.
   const setTv = (on) => { body.classList.toggle('tv', on); store.set('tv', on); };
   setTv(new URLSearchParams(location.search).get('modo') === 'tv' || store.get('tv', false));
-  document.querySelectorAll('.modebtn').forEach((el) => tap(el, () => { setTv(!body.classList.contains('tv')); vibrate(20); }));
+  document.querySelectorAll('.modebtn').forEach((el) => tap(el, () => {
+    setTv(!body.classList.contains('tv')); vibrate(20);
+    if (body.classList.contains('tv')) send({ t: 'park' }); // esconder el puntero al pasar a la tele
+  }));
   tap($('vidseek'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
   tap($('vidkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
   tap($('tvkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));

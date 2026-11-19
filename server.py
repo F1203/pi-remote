@@ -104,10 +104,27 @@ abs_mouse = UInput(
 )
 
 
+pointer = {"parked": False}
+abs_last = {"pos": None}  # puntero escondido en la esquina (se olvida al usar el trackpad)
+
+
+async def park():
+    """Esconde el puntero abajo a la derecha, donde queda prácticamente fuera de la pantalla."""
+    if not pointer["parked"]:
+        await abs_move(1, 1)
+
+
 async def abs_move(fx, fy, click=False):
     """fx, fy: fracción de la pantalla (0..1). click: clic izquierdo ahí."""
-    abs_mouse.write(e.EV_ABS, e.ABS_X, int(min(max(fx, 0), 1) * ABS_MAX))
-    abs_mouse.write(e.EV_ABS, e.ABS_Y, int(min(max(fy, 0), 1) * ABS_MAX))
+    pointer["parked"] = fx >= 1 and fy >= 1 and not click
+    x, y = int(min(max(fx, 0), 1) * ABS_MAX), int(min(max(fy, 0), 1) * ABS_MAX)
+    # El kernel descarta una posición igual a la última de este dispositivo (aunque el puntero se
+    # haya movido con el trackpad): cambiarla en 1 unidad, que en la pantalla es el mismo punto
+    if (x, y) == abs_last["pos"]:
+        x, y = (x - 1 if x else x + 1), (y - 1 if y else y + 1)
+    abs_last["pos"] = (x, y)
+    abs_mouse.write(e.EV_ABS, e.ABS_X, x)
+    abs_mouse.write(e.EV_ABS, e.ABS_Y, y)
     abs_mouse.syn()
     if click:
         await asyncio.sleep(0.05)
@@ -413,10 +430,14 @@ async def dispatch(m, client):
     if t == "wake":
         return
     if t == "m":
+        pointer["parked"] = False
         move(m["x"], m["y"])
+    elif t == "park":  # el celular pasó a modo tele
+        await park()
     elif t == "s":
         scroll(m.get("x", 0), m.get("y", 0))
-    elif t == "pz":  # pellizco: p = "b" (empieza) / "e" (termina)
+    elif t == "pz":
+        pointer["parked"] = False  # pellizco: p = "b" (empieza) / "e" (termina)
         await (pinch_begin() if m.get("p") == "b" else pinch_end())
     elif t == "pu":  # pellizco: s = separación actual / separación al empezar
         pinch_update(float(m.get("s", 1)))
@@ -448,6 +469,7 @@ async def dispatch(m, client):
     elif t == "nav":  # modo tele: up/down/left/right/ok/back/home/search
         a = str(m.get("a", ""))
         if a in NAV_ACTIONS:
+            await park()  # usando la cruceta el puntero no hace falta
             editable = await nav(a)
             await client.send(json.dumps({"t": "navres", "a": a, "editable": editable}))
     elif t == "mute":

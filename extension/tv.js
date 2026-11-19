@@ -73,22 +73,19 @@
   // El servidor tiene un mouse "absoluto": tv.js le pide llevar el puntero a un punto de la pantalla
   // (fracción 0..1). Sirve para esconderlo en la esquina y para hacer un clic real en un reproductor.
   let ownMouseUntil = 0;   // movimientos pedidos por nosotros: no esconden el recuadro
-  let parked = false;      // puntero escondido en la esquina
   let lastMouse = null;    // última posición vista en esta página {x, y, t}
   function mouseTo(fx, fy, click) {
     ownMouseUntil = performance.now() + 900;
     try { chrome.runtime.sendMessage({ mouse: { fx, fy, click: !!click } }); } catch {}
   }
-  // Abajo a la derecha el puntero queda prácticamente fuera de la pantalla
-  function park() { if (!parked) { parked = true; mouseTo(1, 1); } }
 
   // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
   window.addEventListener('mousemove', (ev) => {
     if (!ev.isTrusted) return;
     lastMouse = { x: ev.clientX, y: ev.clientY, t: performance.now() };
     if (performance.now() < ownMouseUntil) return;
+    if (ev.clientX >= innerWidth - 3 && ev.clientY >= innerHeight - 3) return; // yendo a la esquina
     if (Math.abs(ev.movementX) + Math.abs(ev.movementY) > 3) {
-      parked = false;
       if (shown) { hide(); markActive(false); }
     }
   }, true);
@@ -143,7 +140,7 @@
     say('▶');
     // Dejar que el reproductor arranque y después esconder el puntero
     await sleep(1200);
-    parked = false; park();
+    mouseTo(1, 1);
   }
 
   // ---------- Candidatos ----------
@@ -497,7 +494,7 @@
 
   function nav(a) {
     markActive(true);
-    park();
+    ownMouseUntil = performance.now() + 600; // el servidor acaba de esconder el puntero
     if (a === 'play') return media('play');
     if (a === 'rw5' || a === 'ff5') return media('seek', a === 'rw5' ? -5 : 5);
     if (a === 'cc') return media('cc');
