@@ -1,4 +1,8 @@
 chrome.runtime.onMessage.addListener((m, sender) => {
+  if (m && m.mouse) { // tv.js: mover el puntero / clic real (lo hace el servidor)
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'mouse', ...m.mouse }));
+    return;
+  }
   if (m && 'watch' in m) { // tv.js: si en la página hay un video
     if (sender.tab && sender.frameId === 0) { watchByTab.set(sender.tab.id, !!m.watch); reportState(); }
     return;
@@ -24,7 +28,7 @@ function seekVideo(seconds) {
 
 // Se ejecuta en cada frame: pausa / reproduce, adelanta o cambia subtítulos del video del frame.
 // Sirve para reproductores en iframes de otro dominio (animeav1 y similares).
-function mediaCmd(cmd, s) {
+async function mediaCmd(cmd, s) {
   const videos = [];
   const collect = (root) => {
     root.querySelectorAll('video').forEach((v) => videos.push(v));
@@ -42,17 +46,12 @@ function mediaCmd(cmd, s) {
     return 'seek';
   }
   if (cmd === 'play') {
+    if (v && !v.paused) { v.pause(); return 'pause'; }
     if (v) {
-      if (v.paused) { v.play().catch(() => {}); return 'play'; }
-      v.pause(); return 'pause';
+      // Si el navegador no deja (falta un clic de verdad en el reproductor), lo resuelve tv.js
+      try { await Promise.race([v.play(), new Promise((_, no) => setTimeout(no, 1500))]); return 'play'; } catch { return false; }
     }
-    // Todavía no arrancó: tocar el botón grande de play del reproductor
-    const big = [...document.querySelectorAll('.jw-display-icon-display, .jw-icon-display, .vjs-big-play-button, '
-      + '.plyr__control--overlaid, .play-button, .playbutton, [aria-label="Play"], [aria-label="Reproducir"]')].find(shown);
-    if (big) { big.click(); return 'play'; }
-    const any = videos.sort((a, b) => size(b) - size(a))[0];
-    if (any && size(any) > 0) { any.play().catch(() => {}); return 'play'; }
-    return false;
+    return false; // todavía no arrancó: hace falta un clic real
   }
   if (cmd === 'cc') {
     const btn = [...document.querySelectorAll('.jw-icon-cc, .vjs-subs-caps-button button, .vjs-subs-caps-button, '
@@ -74,6 +73,11 @@ async function runMedia(tabId, cmd, s) {
     target: { tabId, allFrames: true }, func: mediaCmd, args: [cmd, s || 0],
   });
   const r = (results.find((x) => x.result) || {}).result;
+  if (cmd === 'play' && !r) {
+    // El reproductor no arrancó (o no deja arrancarlo por código): clic real en el centro del video
+    chrome.tabs.sendMessage(tabId, { realclick: true }, { frameId: 0 }).catch(() => {});
+    return { ok: true };
+  }
   const text = {
     seek: (s > 0 ? '+' : '−') + Math.abs(s) + ' s', play: '▶', pause: '❚❚',
     cc: 'Subtítulos', 'cc-on': 'Subtítulos: sí', 'cc-off': 'Subtítulos: no',

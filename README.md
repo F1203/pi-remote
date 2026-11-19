@@ -61,6 +61,11 @@ el control con trackpad de siempre.
   primer episodio aunque haya relacionados más arriba), y al volver queda en la misma tarjeta. **Buscar** usa el buscador del sitio (si no tiene, YouTube); **Inicio** va al inicio del
   sitio y, si ya se está ahí, a YouTube.
 - Si se usa el trackpad, el recuadro se esconde; la próxima flecha lo vuelve a mostrar.
+- **Puntero escondido:** al usar la cruceta, el puntero se va a la esquina de abajo a la derecha
+  (queda fuera de la pantalla). Lo mueve un mouse absoluto virtual del servidor (`pi-remote-abs`).
+- **Reproductores que piden un clic** (animeav1): si OK / play no logra arrancar el video por
+  código, se hace un clic real en el centro del reproductor. Para acertar, la página mueve el
+  puntero a uno o dos puntos fuera del video, mira dónde aparece y corrige la cuenta.
 - **Con un video abierto** (un video o Short de YouTube, o una página con reproductor) los botones de
   abajo cambian por un panel grande: −5 s · reproducir/pausar · +5 s, pantalla completa,
   subtítulos, y volumen / +1:25 / teclado. La extensión avisa el cambio (`tvstate`) y el servidor

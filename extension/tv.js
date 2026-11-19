@@ -69,10 +69,82 @@
     if (!shown) { shown = true; requestAnimationFrame(place); }
   }
   function hide() { shown = false; ring.style.display = 'none'; }
+  // ---------- Puntero ----------
+  // El servidor tiene un mouse "absoluto": tv.js le pide llevar el puntero a un punto de la pantalla
+  // (fracción 0..1). Sirve para esconderlo en la esquina y para hacer un clic real en un reproductor.
+  let ownMouseUntil = 0;   // movimientos pedidos por nosotros: no esconden el recuadro
+  let parked = false;      // puntero escondido en la esquina
+  let lastMouse = null;    // última posición vista en esta página {x, y, t}
+  function mouseTo(fx, fy, click) {
+    ownMouseUntil = performance.now() + 900;
+    try { chrome.runtime.sendMessage({ mouse: { fx, fy, click: !!click } }); } catch {}
+  }
+  // Abajo a la derecha el puntero queda prácticamente fuera de la pantalla
+  function park() { if (!parked) { parked = true; mouseTo(1, 1); } }
+
   // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
   window.addEventListener('mousemove', (ev) => {
-    if (shown && ev.isTrusted && Math.abs(ev.movementX) + Math.abs(ev.movementY) > 3) { hide(); markActive(false); }
+    if (!ev.isTrusted) return;
+    lastMouse = { x: ev.clientX, y: ev.clientY, t: performance.now() };
+    if (performance.now() < ownMouseUntil) return;
+    if (Math.abs(ev.movementX) + Math.abs(ev.movementY) > 3) {
+      parked = false;
+      if (shown) { hide(); markActive(false); }
+    }
   }, true);
+
+  // Posición en la pantalla (fracción) de un punto de la página: primero una estimación con el
+  // tamaño de la ventana; después se corrige mirando dónde aparece de verdad el puntero
+  function estimate(x, y) {
+    const z = outerWidth / innerWidth || 1; // zoom de la página
+    const top = outerHeight - innerHeight * z; // barra de pestañas y direcciones
+    return { fx: (screenX + x * z) / screen.width, fy: (screenY + top + y * z) / screen.height, ax: screen.width / z, ay: screen.height / z };
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function probe(fx, fy) {
+    const t0 = performance.now();
+    mouseTo(fx, fy);
+    for (let i = 0; i < 12; i++) {
+      await sleep(40);
+      if (lastMouse && lastMouse.t > t0) return lastMouse;
+    }
+    return null;
+  }
+  async function realClick(el) {
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const tx = r.left + r.width / 2, ty = r.top + r.height / 2;
+    // Puntos de calibración fuera de iframes (ahí la página no ve el puntero)
+    const spots = [[0.15, 0.05], [0.85, 0.95], [0.85, 0.05], [0.15, 0.95], [0.5, 0.02], [0.02, 0.5]]
+      .map(([a, b]) => [a * innerWidth, b * innerHeight])
+      .filter(([x, y]) => { const h = document.elementFromPoint(x, y); return h && !/^(IFRAME|VIDEO)$/.test(h.tagName); });
+    const seen = [];
+    for (const [x, y] of spots) {
+      const g = estimate(x, y);
+      const m = await probe(g.fx, g.fy);
+      if (m) seen.push({ fx: g.fx, fy: g.fy, x: m.x, y: m.y });
+      if (seen.length === 2) break;
+    }
+    const g = estimate(tx, ty);
+    let fx = g.fx, fy = g.fy;
+    // Recta página = a * fracción + b en cada eje (con 2 puntos se calcula todo, con 1 solo el corrimiento)
+    const fit = (k, f, sA) => {
+      if (seen.length === 2 && Math.abs(seen[1][f] - seen[0][f]) > 0.05) {
+        const a = (seen[1][k] - seen[0][k]) / (seen[1][f] - seen[0][f]);
+        return [a, seen[0][k] - a * seen[0][f]];
+      }
+      if (seen.length) return [sA, seen[0][k] - sA * seen[0][f]];
+      return null;
+    };
+    const lx = fit('x', 'fx', g.ax), ly = fit('y', 'fy', g.ay);
+    if (lx) fx = (tx - lx[1]) / lx[0];
+    if (ly) fy = (ty - ly[1]) / ly[0];
+    mouseTo(fx, fy, true);
+    say('▶');
+    // Dejar que el reproductor arranque y después esconder el puntero
+    await sleep(1200);
+    parked = false; park();
+  }
 
   // ---------- Candidatos ----------
   const visible = (el) => {
@@ -393,6 +465,7 @@
 
   function nav(a) {
     markActive(true);
+    park();
     if (a === 'play') return media('play');
     if (a === 'rw5' || a === 'ff5') return media('seek', a === 'rw5' ? -5 : 5);
     if (a === 'cc') return media('cc');
@@ -420,6 +493,7 @@
 
   chrome.runtime.onMessage.addListener((m, _sender, reply) => {
     if (m && m.toast) { say(m.toast); return; }
+    if (m && m.realclick) { realClick(player()); return; }
     if (!m || !m.nav) return;
     let res = {};
     try { res = nav(m.nav) || {}; } catch (ex) { res = { ok: false, err: String(ex) }; }

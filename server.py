@@ -93,6 +93,31 @@ touchpad = UInput(
     name="pi-remote-touchpad",
     input_props=[e.INPUT_PROP_POINTER, e.INPUT_PROP_BUTTONPAD],
 )
+# Mouse "absoluto" (como el de una máquina virtual): lleva el puntero directo a un punto de la
+# pantalla. Lo usa el modo tele para hacer un clic real en el centro de un reproductor (hay
+# reproductores que solo arrancan con un clic de verdad) y para esconder el puntero en la esquina.
+ABS_MAX = 65535
+abs_mouse = UInput(
+    {e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT],
+     e.EV_ABS: [(e.ABS_X, AbsInfo(0, 0, ABS_MAX, 0, 0, 0)), (e.ABS_Y, AbsInfo(0, 0, ABS_MAX, 0, 0, 0))]},
+    name="pi-remote-abs",
+)
+
+
+async def abs_move(fx, fy, click=False):
+    """fx, fy: fracción de la pantalla (0..1). click: clic izquierdo ahí."""
+    abs_mouse.write(e.EV_ABS, e.ABS_X, int(min(max(fx, 0), 1) * ABS_MAX))
+    abs_mouse.write(e.EV_ABS, e.ABS_Y, int(min(max(fy, 0), 1) * ABS_MAX))
+    abs_mouse.syn()
+    if click:
+        await asyncio.sleep(0.05)
+        abs_mouse.write(e.EV_KEY, e.BTN_LEFT, 1)
+        abs_mouse.syn()
+        await asyncio.sleep(0.03)
+        abs_mouse.write(e.EV_KEY, e.BTN_LEFT, 0)
+        abs_mouse.syn()
+
+
 PINCH_D0 = 300  # media separación inicial de los dedos virtuales (deja lugar para agrandar ~6 veces)
 pinch = {"on": False, "tid": 0, "t0": 0.0, "watchdog": None}
 
@@ -332,7 +357,10 @@ async def handle_extension(ws):
     try:
         async for raw in ws:
             m = json.loads(raw)
-            if m.get("t") == "tvstate":
+            if m.get("t") == "mouse":  # modo tele: mover el puntero (y hacer clic) en un punto
+                await wake()
+                await abs_move(float(m.get("fx", 1)), float(m.get("fy", 1)), bool(m.get("click")))
+            elif m.get("t") == "tvstate":
                 tv_state["watch"] = bool(m.get("watch"))
                 send_all(json.dumps({"t": "tv", **tv_state}))
             elif m.get("t") in ("seekres", "navres"):
