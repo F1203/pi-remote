@@ -349,8 +349,8 @@ async def seek(seconds):
 NAV_KEYS = {"up": ("Up", ()), "down": ("Down", ()), "left": ("Left", ()), "right": ("Right", ()),
             "ok": ("Return", ()), "back": ("Left", ("alt",)), "search": ("l", ("ctrl",)),
             "play": ("space", ()), "rw5": ("Left", ()), "ff5": ("Right", ()), "cc": ("c", ()), "full": ("f", ())}
-NAV_ACTIONS = set(NAV_KEYS) | {"home"}
-tv_state = {"watch": False}  # si la pestaña activa de Brave es un video de YouTube (lo avisa la extensión)
+NAV_ACTIONS = set(NAV_KEYS) | {"home", "subs", "horario", "catalogo"}
+tv_state = {"watch": False, "site": ""}  # si la pestaña activa de Brave es un video de YouTube (lo avisa la extensión)
 
 
 async def nav(action):
@@ -384,6 +384,7 @@ async def handle_extension(ws):
                     pointer["parked"] = True
             elif m.get("t") == "tvstate":
                 tv_state["watch"] = bool(m.get("watch"))
+                tv_state["site"] = str(m.get("site", ""))
                 send_all(json.dumps({"t": "tv", **tv_state}))
             elif m.get("t") in ("seekres", "navres"):
                 fut = seek_waiters.get(m.get("id"))

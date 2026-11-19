@@ -501,8 +501,26 @@
     setTimeout(() => say(b.getAttribute('aria-pressed') === 'true' ? 'Subtítulos: sí' : 'Subtítulos: no'), 150);
   }
 
+  // Accesos rápidos del celular
+  const LINKS = {
+    subs: 'https://www.youtube.com/feed/subscriptions',
+    horario: 'https://animeav1.com/horario',
+    catalogo: 'https://animeav1.com/catalogo',
+  };
+  function goLink(u) {
+    const url = new URL(u);
+    if (url.origin === location.origin) {
+      // Si la página tiene ese link, tocarlo (en YouTube cambia de página sin recargar)
+      const a = [...document.querySelectorAll(`a[href="${url.pathname}"], a[href="${u}"]`)][0];
+      if (a) { a.click(); return {}; }
+    }
+    location.href = u;
+    return {};
+  }
+
   function nav(a) {
     markActive(true);
+    if (LINKS[a]) return goLink(LINKS[a]);
     ownMouseUntil = performance.now() + 600; // el servidor acaba de esconder el puntero
     if (a === 'play') return media('play');
     if (a === 'rw5' || a === 'ff5') return media('seek', a === 'rw5' ? -5 : 5);

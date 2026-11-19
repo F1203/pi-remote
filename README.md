@@ -63,6 +63,9 @@ En modo tele, la cruceta sirve para usar YouTube (y otros sitios) en Brave como 
   primer episodio aunque haya relacionados más arriba), y al volver queda en la misma tarjeta. **Buscar** usa el buscador del sitio (si no tiene, YouTube); **Inicio** va al inicio del
   sitio y, si ya se está ahí, a YouTube.
 - Si se usa el trackpad, el recuadro se esconde; la próxima flecha lo vuelve a mostrar.
+- **Accesos rápidos según el sitio abierto en Brave:** en YouTube, **Suscrip.** (a la derecha de
+  Buscar); en animeav1, una fila con **Horario** y **Catálogo**. La extensión avisa el sitio
+  (`tvstate` → `{t: "tv", watch, site}`).
 - **Pantalla completa automática:** usando la cruceta, al poner un video entra solo en pantalla
   completa (YouTube: apenas aparece el reproductor, con la tecla f real; otros sitios: al entrar al
   episodio el reproductor ocupa toda la pantalla y a los 2 s se le da play, con clic real si hace

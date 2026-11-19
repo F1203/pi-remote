@@ -74,6 +74,10 @@
   #vidpad .sec button { min-height:52px; font-size:16px; }
   #vidpad .sec button svg { width:24px; height:24px; }
   body.kb #vidpad .opt { display:none; }
+  /* Accesos rápidos según el sitio abierto en Brave (lo avisa la extensión) */
+  .site-yt, .site-anime { display:none !important; }
+  body[data-site=youtube] .site-yt { display:block !important; }
+  body[data-site=animeav1] .site-anime { display:flex !important; }
   #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
 </style>
 </head>
@@ -115,6 +119,11 @@
       <button data-nav="back" data-icon="back" title="Atrás (sale de pantalla completa o vuelve a la página anterior)"> Atrás</button>
       <button data-nav="home" data-icon="home" title="Inicio de YouTube"> Inicio</button>
       <button data-nav="search" data-icon="search" title="Buscar en YouTube (abre el teclado)"> Buscar</button>
+      <button data-nav="subs" data-icon="subs" class="site-yt" title="Suscripciones de YouTube"> Suscrip.</button>
+    </div>
+    <div class="row site-anime">
+      <button data-nav="horario" data-icon="calendar" title="Horario de AnimeAV1"> Horario</button>
+      <button data-nav="catalogo" data-icon="grid" title="Catálogo de animes de AnimeAV1"> Catálogo</button>
     </div>
     <div id="dpadwrap"><span id="tvstatus"></span>
       <div id="dpad">
@@ -229,6 +238,7 @@
     else if (m.t === 'sleep') body.classList.toggle('asleep', m.on);
     else if (m.t === 'mtu') bleChunk = Math.max(20, Math.min(m.n - 3, 509));
     if ('watch' in m) body.classList.toggle('watch', !!m.watch); // hay un video abierto en Brave
+    if ('site' in m) body.dataset.site = m.site || ''; // youtube / animeav1: accesos rápidos
   }
 
   // ----- WebSocket -----
@@ -571,6 +581,9 @@
     tv: 'M4 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM8 2l4 5 4-5',
     home: 'M3 11l9-8 9 8M5 9.5V20h5v-6h4v6h5V9.5',
     mouse: 'M12 3a6 6 0 0 0-6 6v6a6 6 0 0 0 12 0V9a6 6 0 0 0-6-6zM12 7v4',
+    subs: 'M5 3h14M3 6h18M3 9h18v12H3zM10 12.5v5l4.5-2.5z',
+    calendar: 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4',
+    grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
     cc: 'M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM10.5 10a2.5 2.5 0 1 0 0 4M17.5 10a2.5 2.5 0 1 0 0 4',
   };
   document.querySelectorAll('[data-icon]').forEach((el) => {

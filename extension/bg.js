@@ -186,9 +186,14 @@ async function reportState() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const watch = !!tab && (watchByTab.get(tab.id)
     ?? /^https:\/\/(www\.|m\.)?youtube\.com\/(watch|shorts\/)/.test(tab.url || ''));
-  if (watch === lastWatch) return;
-  lastWatch = watch;
-  ws.send(JSON.stringify({ t: 'tvstate', watch }));
+  // Sitio, para los botones de acceso rápido del celular (Suscripciones, Horario, Catálogo)
+  const url = (tab && tab.url) || '';
+  const site = /^https:\/\/([\w-]+\.)*youtube\.com\//.test(url) ? 'youtube'
+    : /^https:\/\/([\w-]+\.)*animeav1\.com\//.test(url) ? 'animeav1' : '';
+  const key = watch + '|' + site;
+  if (key === lastWatch) return;
+  lastWatch = key;
+  ws.send(JSON.stringify({ t: 'tvstate', watch, site }));
 }
 chrome.tabs.onActivated.addListener(() => reportState());
 chrome.tabs.onUpdated.addListener((id, info, tab) => {
