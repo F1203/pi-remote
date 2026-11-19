@@ -81,8 +81,11 @@
   // Dónde esconder el puntero: normalmente en la esquina de abajo a la derecha (lo hace el servidor),
   // pero con un reproductor agrandado (animeav1) esa esquina cae sobre sus controles y no los deja
   // esconderse: ahí va al centro, donde el reproductor lo oculta solo al rato.
+  // En el centro justo el puntero quedaba visible (sobre el botón grande de play del reproductor):
+  // un poco a la derecha. 0.004 de la pantalla ≈ 8 píxeles en 1920.
+  const CENTER_X = 0.5 + 0.004;
   function parkSpot() {
-    if (pseudo) mouseTo(0.5, 0.5, false, true); else mouseTo(1, 1, false, true);
+    if (pseudo) mouseTo(CENTER_X, 0.5, false, true); else mouseTo(1, 1, false, true);
   }
 
   // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
