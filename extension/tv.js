@@ -213,21 +213,37 @@
     }
     const p = player();
     if (p) return p;
+    // Página de una serie: empezar por el primer episodio = primera tarjeta cuyo link cuelga de esta
+    // dirección (/media/one-piece -> /media/one-piece/1), aunque haya "relacionados" más arriba
+    if (!YT) {
+      const base = location.pathname.replace(/\/$/, '') + '/';
+      const eps = list.filter((el) => {
+        if (!isCard(el)) return false;
+        const k = linkOf(el);
+        try { return !!k && new URL(k, location.href).pathname.startsWith(base); } catch { return false; }
+      });
+      if (eps.length) return eps.sort(byPos)[0];
+    }
     const top = YT ? 60 : 0;
     const inView = list.filter((el) => {
       const r = el.getBoundingClientRect();
       return r.top >= top - 4 && r.bottom <= innerHeight + r.height * 0.5 && r.left >= 0;
     });
+    // Primero las tarjetas a la vista; si no hay, la primera tarjeta de la página aunque esté más
+    // abajo (en una serie de animeav1, el primer episodio), y recién después cualquier cosa
     const main = inView.filter(isCard);
-    const pool = main.length ? main : inView.length ? inView : list;
-    pool.sort((x, y) => {
-      const a = x.getBoundingClientRect(), b = y.getBoundingClientRect();
-      return Math.abs(a.top - b.top) > 20 ? a.top - b.top : a.left - b.left;
-    });
+    const cardsAll = list.filter((el) => isCard(el) && !floating(el));
+    const pool = main.length ? main : cardsAll.length ? cardsAll : inView.length ? inView : list;
+    pool.sort(byPos);
     return pool[0] || null;
   }
+  // Orden de lectura: de arriba a abajo y de izquierda a derecha
+  function byPos(x, y) {
+    const a = x.getBoundingClientRect(), b = y.getBoundingClientRect();
+    return Math.abs(a.top - b.top) > 20 ? a.top - b.top : a.left - b.left;
+  }
 
-  function focusEl(el) {
+  function focusEl(el, center) {
     cur = el;
     show();
     if (!el) return;
@@ -235,14 +251,16 @@
     const r = el.getBoundingClientRect();
     const top = YT ? 64 : 0;
     // También si lo tapa una barra fija del sitio
-    if (r.top < top || r.bottom > innerHeight - 8 || (!floating(el) && !uncovered(el))) {
+    if (center && !floating(el) && el !== player()) {
+      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    } else if (r.top < top || r.bottom > innerHeight - 8 || (!floating(el) && !uncovered(el))) {
       const big = r.height > innerHeight * 0.7;
       el.scrollIntoView({ block: big ? 'start' : 'center', inline: 'nearest', behavior: 'smooth' });
     }
   }
 
   function move(dir) {
-    if (!cur || !cur.isConnected || !visible(cur)) { focusEl(start()); return true; }
+    if (!cur || !cur.isConnected || !visible(cur)) { focusEl(start(), !YT); return true; }
     if (!shown) { show(); return true; } // primera flecha después de usar el trackpad: solo mostrar dónde está
     const next = nearest(cur, dir, candidates());
     if (next) focusEl(next);
@@ -413,7 +431,8 @@
     let tries = 0;
     const t = setInterval(() => {
       const el = start();
-      if ((el && (el === player() || isCard(el))) || ++tries > 20) { clearInterval(t); if (el) focusEl(el); }
+      // Al entrar a una página, la tarjeta elegida queda centrada en la pantalla
+      if ((el && (el === player() || isCard(el))) || ++tries > 20) { clearInterval(t); if (el) focusEl(el, !YT); }
     }, 150);
   }
   if (wasActive()) setTimeout(resume, 300);

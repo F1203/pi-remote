@@ -57,8 +57,8 @@ el control con trackpad de siempre.
   `<video>` o un iframe grande, aunque sea de otro dominio) funciona como en YouTube: ←/→ ±10 s,
   OK pausa, y los botones del panel de video (±5 s, subtítulos si el reproductor los tiene).
   **Completa** agranda el reproductor a toda la ventana y pone Brave en pantalla completa; ↓ o
-  Atrás lo achican. Al abrir otra página el recuadro aparece solo, y al volver queda en la misma
-  tarjeta. **Buscar** usa el buscador del sitio (si no tiene, YouTube); **Inicio** va al inicio del
+  Atrás lo achican. Al abrir otra página el recuadro aparece solo y centrado (en una serie, en el
+  primer episodio aunque haya relacionados más arriba), y al volver queda en la misma tarjeta. **Buscar** usa el buscador del sitio (si no tiene, YouTube); **Inicio** va al inicio del
   sitio y, si ya se está ahí, a YouTube.
 - Si se usa el trackpad, el recuadro se esconde; la próxima flecha lo vuelve a mostrar.
 - **Con un video abierto** (un video o Short de YouTube, o una página con reproductor) los botones de
