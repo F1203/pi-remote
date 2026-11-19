@@ -24,7 +24,19 @@
     'ytd-watch-metadata #owner a', 'ytd-subscribe-button-renderer button',
     'ytd-rich-shelf-renderer #button button', 'ytd-continuation-item-renderer button',
   ].join(',');
-  const GENERIC = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=tab], [tabindex]:not([tabindex="-1"])';
+  const GENERIC = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=tab], '
+    + '[role^=menuitem], [role=option], [tabindex]:not([tabindex="-1"])';
+  // Menús desplegables (filtros de animeav1 y similares): mientras hay uno abierto, la cruceta se
+  // mueve solo dentro de él (si no, saltaba a las tarjetas que quedan tapadas debajo del menú)
+  const OVERLAY = '[role=menu], [role=listbox], [data-dropdown-menu-content], [data-popover-content], [data-select-content]';
+  function openOverlay() {
+    if (YT) return null; // en YouTube no (la lista de sugerencias del buscador también es un listbox)
+    const all = [...document.querySelectorAll(OVERLAY)]
+      .filter((el) => el.getAttribute('data-state') !== 'closed' && visible(el) && el.querySelector(GENERIC));
+    return all.length ? all[all.length - 1] : null;
+  }
+  const triggerOf = (ov) => (ov.id && document.querySelector(`[aria-controls="${CSS.escape(ov.id)}"]`))
+    || document.querySelector('[aria-expanded="true"][aria-haspopup]');
   const TEXT_IN = /^(text|search|email|url|tel|password|number)$/i;
 
   let cur = null;        // elemento enfocado
@@ -197,7 +209,10 @@
       const set = new Set(all);
       list = [...new Set(all
         .filter((el) => { for (let a = el.parentElement; a; a = a.parentElement) if (set.has(a)) return false; return true; })
-        .map(cardOf))];
+        // una casilla se elige con su texto (la etiqueta entera)
+        .map((el) => (el.matches('input[type=checkbox], input[type=radio]') && el.closest('label')) || cardOf(el)))];
+      const ov = openOverlay();
+      if (ov) return list.filter((el) => ov.contains(el) && visible(el));
     }
     if (p) list.push(p);
     // Lo que está dentro del reproductor no cuenta (el reproductor es un solo lugar). Fuera de
@@ -346,9 +361,13 @@
   function go(dir) {
     if (!cur || !cur.isConnected || !visible(cur)) { focusEl(start(), !YT); return true; }
     if (!shown) { show(); return true; } // primera flecha después de usar el trackpad: solo mostrar dónde está
-    const next = nearest(cur, dir, candidates());
+    const list = candidates();
+    let next = nearest(cur, dir, list);
+    // Hay un menú abierto y el recuadro todavía está afuera (en el botón que lo abrió): entrar al menú
+    const ov = openOverlay();
+    if (!next && ov && !ov.contains(cur)) next = list.sort(byPos)[0];
     if (next) focusEl(next);
-    else if (dir === 'down' || dir === 'up') scrollBy({ top: (dir === 'down' ? 1 : -1) * innerHeight * 0.6, behavior: 'smooth' });
+    else if (!ov && (dir === 'down' || dir === 'up')) scrollBy({ top: (dir === 'down' ? 1 : -1) * innerHeight * 0.6, behavior: 'smooth' });
     return true;
   }
 
@@ -417,10 +436,18 @@
     let target = cur;
     if (isCard(cur)) {
       target = cur.querySelector('a#thumbnail[href], a[href*="/watch"], a[href^="/shorts/"], a[href*="/playlist"], a#main-link[href], a[href]') || cur;
-    } else if (!cur.matches('a, button, input, select, [role=button], [role=tab]')) {
+    } else if (!cur.matches('a, button, input, select, label, [role=button], [role=tab], [role^=menuitem], [role=option]')) {
       target = cur.querySelector('a[href], button, [role=button], [role=tab]') || cur;
     }
+    const opens = target.matches('[aria-haspopup]') && target.getAttribute('aria-expanded') !== 'true';
     target.click();
+    // Abrió un menú: el recuadro entra directo a la primera opción
+    if (opens) {
+      setTimeout(() => {
+        const ov = openOverlay();
+        if (ov && !ov.contains(cur)) { const first = candidates().sort(byPos)[0]; if (first) focusEl(first); }
+      }, 350);
+    }
     return {};
   }
 
@@ -468,6 +495,17 @@
 
   function back() {
     if (pseudo || document.fullscreenElement) return exitFull();
+    const ov = openOverlay();
+    if (ov) {
+      // Cerrar el menú (Escape real) y volver al botón que lo abrió; si no se cerró, tocar ese botón
+      const trig = triggerOf(ov);
+      (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+      setTimeout(() => {
+        if (openOverlay() === ov && trig) trig.click();
+        if (trig) focusEl(trig);
+      }, 300);
+      return { key: 'Escape' };
+    }
     const a = document.activeElement;
     if (editable(a)) return leaveInput(a);
     history.back();
