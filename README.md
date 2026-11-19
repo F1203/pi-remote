@@ -65,7 +65,8 @@ En modo tele, la cruceta sirve para usar YouTube (y otros sitios) en Brave como 
 - Si se usa el trackpad, el recuadro se esconde; la próxima flecha lo vuelve a mostrar.
 - **Menús desplegables** (los filtros del catálogo de animeav1): OK abre el menú y el recuadro entra
   a la primera opción; mientras está abierto, la cruceta se mueve solo dentro del menú (cada
-  opción es la etiqueta entera con su casilla), OK marca/desmarca y Atrás lo cierra y vuelve al botón.
+  opción es la etiqueta entera con su casilla), OK marca/desmarca, y Atrás (o ↑ desde la primera
+  fila) lo cierra y vuelve al botón.
 - **Accesos rápidos según el sitio abierto en Brave:** en YouTube, **Suscrip.** (a la derecha de
   Buscar); en animeav1, una fila con **Horario** y **Catálogo**. La extensión avisa el sitio
   (`tvstate` → `{t: "tv", watch, site}`).

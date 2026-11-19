@@ -366,6 +366,8 @@
     // Hay un menú abierto y el recuadro todavía está afuera (en el botón que lo abrió): entrar al menú
     const ov = openOverlay();
     if (!next && ov && !ov.contains(cur)) next = list.sort(byPos)[0];
+    // ↑ desde la primera fila del menú: salir de él (como Atrás)
+    if (!next && ov && ov.contains(cur) && dir === 'up') return closeOverlay(ov);
     if (next) focusEl(next);
     else if (!ov && (dir === 'down' || dir === 'up')) scrollBy({ top: (dir === 'down' ? 1 : -1) * innerHeight * 0.6, behavior: 'smooth' });
     return true;
@@ -493,19 +495,21 @@
     hiddenLists.clear();
   }, true);
 
+  // Cerrar el menú (Escape real) y volver al botón que lo abrió; si no se cerró, tocar ese botón
+  function closeOverlay(ov) {
+    const trig = triggerOf(ov);
+    (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+    setTimeout(() => {
+      if (openOverlay() === ov && trig) trig.click();
+      if (trig) focusEl(trig);
+    }, 300);
+    return { key: 'Escape' };
+  }
+
   function back() {
     if (pseudo || document.fullscreenElement) return exitFull();
     const ov = openOverlay();
-    if (ov) {
-      // Cerrar el menú (Escape real) y volver al botón que lo abrió; si no se cerró, tocar ese botón
-      const trig = triggerOf(ov);
-      (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
-      setTimeout(() => {
-        if (openOverlay() === ov && trig) trig.click();
-        if (trig) focusEl(trig);
-      }, 300);
-      return { key: 'Escape' };
-    }
+    if (ov) return closeOverlay(ov);
     const a = document.activeElement;
     if (editable(a)) return leaveInput(a);
     history.back();
