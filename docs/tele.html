@@ -64,6 +64,16 @@
   #dpad [data-nav=right] { top:33%; right:2%; height:34%; width:30%; border-radius:20% 40% 40% 20%; }
   #dpad [data-nav=ok] { left:31%; top:31%; width:38%; height:38%; background:var(--btn); font-size:22px; font-weight:600; }
   #dpad [data-nav=ok]:active, #dpad [data-nav=ok].pressed { background:var(--btn-on); }
+  /* Con un video abierto: panel de reproducción grande; la cruceta se achica para elegir otro */
+  #vidpad { display:none; flex-direction:column; gap:8px; }
+  body.watch #vidpad { display:flex; }
+  body.watch #media, body.watch #tvbottom { display:none; }
+  #vidpad button { min-height:68px; font-size:19px; border-radius:14px; }
+  #vidpad button svg { width:30px; height:30px; }
+  #vidpad .big { flex:1.4; background:#2f3946; }
+  #vidpad .sec button { min-height:52px; font-size:16px; }
+  #vidpad .sec button svg { width:24px; height:24px; }
+  body.kb #vidpad .opt { display:none; }
   #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
 </style>
 </head>
@@ -115,7 +125,7 @@
         <button data-nav="down" data-icon="down" title="Abajo"></button>
       </div>
     </div>
-    <div class="row">
+    <div class="row" id="tvbottom">
       <button id="tvseek" title="Adelantar el video 1 minuto 25 segundos">+1:25</button>
       <button id="tvkb" data-icon="keyboard" title="Abrir o cerrar el teclado"></button>
     </div>
@@ -125,6 +135,24 @@
     <button id="seekbtn" title="Adelantar el video 1 minuto 25 segundos">+1:25</button>
     <button id="rclick" title="Clic derecho">Clic der.</button>
     <button id="kbbtn" data-icon="keyboard" title="Abrir o cerrar el teclado"></button>
+  </div>
+  <div id="vidpad">
+    <div class="row">
+      <button data-nav="rw5" data-icon="rew" title="Atrasar 5 segundos"> 5 s</button>
+      <button data-nav="play" data-icon="playpause" class="big" title="Reproducir / pausar"></button>
+      <button data-nav="ff5" data-icon="ff" title="Adelantar 5 segundos"> 5 s</button>
+    </div>
+    <div class="row">
+      <button data-nav="full" data-icon="expand" title="Video en pantalla completa (tocar de nuevo para salir)"> Completa</button>
+      <button data-nav="cc" data-icon="cc" title="Activar / desactivar subtítulos"> Subtítulos</button>
+    </div>
+    <div class="row sec opt">
+      <button data-vol="-1" data-icon="voldown" title="Bajar volumen"></button>
+      <button data-vol="1" data-icon="volup" title="Subir volumen"></button>
+      <button data-mute="1" data-icon="mute" title="Silenciar / activar sonido"></button>
+      <button id="vidseek" title="Adelantar el video 1 minuto 25 segundos">+1:25</button>
+      <button id="vidkb" data-icon="keyboard" title="Abrir o cerrar el teclado"></button>
+    </div>
   </div>
   <div class="row" id="media">
     <button data-k="Left" data-icon="rew" title="Retroceder el video"></button>
@@ -194,10 +222,11 @@
     if (m.t === 'hb') return;
     if (m.mtu) bleChunk = Math.max(20, Math.min(m.mtu - 3, 509));
     if (m.t === 'clickres') onClickResult(m);
-    else if (m.t === 'seekres' && !m.ok) { showTip($(body.classList.contains('tv') ? 'tvseek' : 'seekbtn'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
+    else if (m.t === 'seekres' && !m.ok) { showTip($(body.classList.contains('watch') ? 'vidseek' : 'tvseek'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
     else if (m.t === 'navres') { if (m.editable) openKb(); else if (m.a === 'ok' || m.a === 'back') closeKb(); }
     else if (m.t === 'sleep') body.classList.toggle('asleep', m.on);
     else if (m.t === 'mtu') bleChunk = Math.max(20, Math.min(m.n - 3, 509));
+    if ('watch' in m) body.classList.toggle('watch', !!m.watch); // hay un video abierto en Brave
   }
 
   // ----- WebSocket -----
@@ -539,6 +568,7 @@
     power: 'M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0',
     tv: 'M4 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM8 2l4 5 4-5',
     home: 'M3 11l9-8 9 8M5 9.5V20h5v-6h4v6h5V9.5',
+    cc: 'M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM10.5 10a2.5 2.5 0 1 0 0 4M17.5 10a2.5 2.5 0 1 0 0 4',
   };
   document.querySelectorAll('[data-icon]').forEach((el) => {
     el.insertAdjacentHTML('afterbegin', `<svg viewBox="0 0 24 24"><path d="${ICONS[el.dataset.icon]}"/></svg>`);
@@ -600,6 +630,8 @@
   // ---------- Modo tele ----------
   // La cruceta va a la extensión de Brave, que mueve un recuadro por los videos de YouTube
   // Esta página es solo la cruceta (body.tv); el trackpad está en index.html
+  tap($('vidseek'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
+  tap($('vidkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
   tap($('tvkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
   document.querySelectorAll('[data-nav]').forEach((el) => {
     const a = el.dataset.nav;
@@ -618,7 +650,7 @@
       return;
     }
     tap(el, () => {
-      send({ t: 'nav', a }); vibrate(a === 'ok' ? 20 : 10);
+      send({ t: 'nav', a }); vibrate(a === 'ok' || a === 'play' ? 20 : 10);
       if (a === 'search') openKb(); // dentro del toque, para que el celular muestre el teclado
     });
   });

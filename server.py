@@ -305,13 +305,19 @@ async def seek(seconds):
 
 # Modo tele: si la extensión no responde, al menos teclas parecidas
 NAV_KEYS = {"up": ("Up", ()), "down": ("Down", ()), "left": ("Left", ()), "right": ("Right", ()),
-            "ok": ("Return", ()), "back": ("Left", ("alt",)), "search": ("l", ("ctrl",))}
+            "ok": ("Return", ()), "back": ("Left", ("alt",)), "search": ("l", ("ctrl",)),
+            "play": ("space", ()), "rw5": ("Left", ()), "ff5": ("Right", ()), "cc": ("c", ()), "full": ("f", ())}
+NAV_ACTIONS = set(NAV_KEYS) | {"home"}
+tv_state = {"watch": False}  # si la pestaña activa de Brave es un video de YouTube (lo avisa la extensión)
 
 
 async def nav(action):
     """Cruceta del modo tele. Devuelve si quedó enfocado un campo de texto (para abrir el teclado)."""
     res = await ask_extension({"t": "nav", "a": action})
     if res:
+        if res.get("key") in KEYS:  # p. ej. "f" en YouTube: la pantalla completa necesita una tecla real
+            async with key_lock:
+                press_key(res["key"])
         return bool(res.get("editable"))
     if action in NAV_KEYS:
         key, mods = NAV_KEYS[action]
@@ -326,7 +332,10 @@ async def handle_extension(ws):
     try:
         async for raw in ws:
             m = json.loads(raw)
-            if m.get("t") in ("seekres", "navres"):
+            if m.get("t") == "tvstate":
+                tv_state["watch"] = bool(m.get("watch"))
+                send_all(json.dumps({"t": "tv", **tv_state}))
+            elif m.get("t") in ("seekres", "navres"):
                 fut = seek_waiters.get(m.get("id"))
                 if fut and not fut.done():
                     fut.set_result(m)
@@ -345,7 +354,7 @@ async def handle(ws):
     if ws.request.path == "/ext":
         return await handle_extension(ws)
     clients.add(ws)
-    await ws.send(json.dumps({"t": "sleep", "on": asleep}))
+    await ws.send(json.dumps({"t": "sleep", "on": asleep, **tv_state}))
     try:
         async for raw in ws:
             try:
@@ -410,7 +419,7 @@ async def dispatch(m, client):
         await client.send(json.dumps({"t": "seekres", "ok": ok}))
     elif t == "nav":  # modo tele: up/down/left/right/ok/back/home/search
         a = str(m.get("a", ""))
-        if a in ("up", "down", "left", "right", "ok", "back", "home", "search"):
+        if a in NAV_ACTIONS:
             editable = await nav(a)
             await client.send(json.dumps({"t": "navres", "a": a, "editable": editable}))
     elif t == "mute":
@@ -473,7 +482,7 @@ def local_ips():
 async def start_ble():
     global ble_link
     link = ble.BleLink(on_message=lambda m: dispatch(m, link),
-                       hello=lambda: json.dumps({"t": "sleep", "on": asleep}),
+                       hello=lambda: json.dumps({"t": "sleep", "on": asleep, **tv_state}),
                        on_pairing=wake_for_pairing)
     clients.add(link)
     ble_link = link

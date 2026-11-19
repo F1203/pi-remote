@@ -51,9 +51,20 @@ el control con trackpad de siempre.
 - **Atrás:** sale de pantalla completa o del buscador, si no vuelve a la página anterior y el
   recuadro queda en el mismo video que se había elegido.
 - **Inicio:** portada de YouTube. **Buscar:** va al buscador y abre el teclado del celular.
-- En Shorts, ↑/↓ pasan al anterior/siguiente y OK pausa. En otras páginas, la cruceta se mueve
-  entre links y botones.
+- En Shorts, ↑/↓ pasan al anterior/siguiente y OK pausa.
+- **Otros sitios** (probado con animeav1.com): cada tarjeta con imagen (serie, episodio) es un solo
+  lugar; en una grilla ↑/↓ pasan a la fila siguiente aunque esté incompleta. El reproductor (un
+  `<video>` o un iframe grande, aunque sea de otro dominio) funciona como en YouTube: ←/→ ±10 s,
+  OK pausa, y los botones del panel de video (±5 s, subtítulos si el reproductor los tiene).
+  **Completa** agranda el reproductor a toda la ventana y pone Brave en pantalla completa; ↓ o
+  Atrás lo achican. Al abrir otra página el recuadro aparece solo, y al volver queda en la misma
+  tarjeta. **Buscar** usa el buscador del sitio (si no tiene, YouTube); **Inicio** va al inicio del
+  sitio y, si ya se está ahí, a YouTube.
 - Si se usa el trackpad, el recuadro se esconde; la próxima flecha lo vuelve a mostrar.
+- **Con un video abierto** (un video o Short de YouTube, o una página con reproductor) los botones de
+  abajo cambian por un panel grande: −5 s · reproducir/pausar · +5 s, pantalla completa,
+  subtítulos, y volumen / +1:25 / teclado. La extensión avisa el cambio (`tvstate`) y el servidor
+  se lo pasa al celular (`{t: "tv", watch}`).
 
 El servidor reenvía `{t: "nav", a: ...}` a la extensión (`bg.js` → `tv.js` de la pestaña activa).
 Si la extensión no responde, manda teclas parecidas (flechas, Enter, Alt+←, Ctrl+L).

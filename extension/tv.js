@@ -1,7 +1,9 @@
 // Modo tele: navegación con la cruceta del celular, como en un Smart TV.
-// El servidor manda {nav: 'up'|'down'|'left'|'right'|'ok'|'back'|'home'|'search'} vía bg.js.
-// En YouTube se mueve entre videos, chips, menú lateral y botones (no por cada link como Tab);
-// en otras páginas, entre links y botones.
+// El servidor manda {nav: 'up'|'down'|'left'|'right'|'ok'|'back'|'home'|'search'|'play'|'rw5'|'ff5'|'cc'|'full'}
+// vía bg.js. En YouTube se mueve entre videos, chips, menú lateral y botones (no por cada link como Tab).
+// En otros sitios (p. ej. animeav1.com) cada tarjeta con imagen es un solo lugar y el reproductor
+// (un <video> o un iframe grande) también; lo que está dentro de un iframe de otro dominio lo
+// controla bg.js en todos los frames (la respuesta {media} se lo pide).
 (() => {
   if (window.__piTv) return; // bg.js puede inyectarlo de nuevo en pestañas viejas
   window.__piTv = true;
@@ -27,7 +29,14 @@
 
   let cur = null;        // elemento enfocado
   let shown = false;     // si el recuadro está visible
-  const memo = new Map(); // url -> link del último video elegido, para volver al mismo al ir atrás
+  let pseudo = null;     // reproductor agrandado a toda la ventana (pantalla completa "a mano")
+  let cards = new WeakSet(); // tarjetas encontradas fuera de YouTube
+  // Último video elegido en cada página, para volver al mismo al ir atrás (sobrevive a recargas)
+  const memoGet = () => { try { return sessionStorage.getItem('pitv:' + location.href); } catch { return null; } };
+  const memoSet = (k) => { try { sessionStorage.setItem('pitv:' + location.href, k); } catch {} };
+  // Si se estaba usando la cruceta, al abrir otra página el recuadro aparece solo
+  const markActive = (on) => { try { if (on) sessionStorage.setItem('pitv_on', Date.now()); else sessionStorage.removeItem('pitv_on'); } catch {} };
+  const wasActive = () => { try { return Date.now() - +(sessionStorage.getItem('pitv_on') || 0) < 300000; } catch { return false; } };
 
   // ---------- Recuadro de foco ----------
   const ring = document.createElement('div');
@@ -47,7 +56,7 @@
 
   function place() {
     if (!shown) return;
-    if (!cur || !cur.isConnected || document.fullscreenElement) { ring.style.display = 'none'; }
+    if (!cur || !cur.isConnected || document.fullscreenElement || pseudo) { ring.style.display = 'none'; }
     else {
       const r = cur.getBoundingClientRect(), pad = 4;
       Object.assign(ring.style, { display: 'block', left: r.left - pad + 'px', top: r.top - pad + 'px',
@@ -62,7 +71,7 @@
   function hide() { shown = false; ring.style.display = 'none'; }
   // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
   window.addEventListener('mousemove', (ev) => {
-    if (shown && ev.isTrusted && Math.abs(ev.movementX) + Math.abs(ev.movementY) > 3) hide();
+    if (shown && ev.isTrusted && Math.abs(ev.movementX) + Math.abs(ev.movementY) > 3) { hide(); markActive(false); }
   }, true);
 
   // ---------- Candidatos ----------
@@ -72,24 +81,53 @@
     if (el.checkVisibility && !el.checkVisibility({ visibilityProperty: true, opacityProperty: false })) return false;
     return true;
   };
-  const player = () => YT && location.pathname === '/watch' && document.querySelector('#movie_player');
+  // Fuera de YouTube el reproductor es el <video> o iframe con pantalla completa más grande
+  function findPlayer() {
+    let best = null, area = 0;
+    for (const el of document.querySelectorAll('video, iframe')) {
+      if (el.tagName === 'IFRAME' && !(el.allowFullscreen || /fullscreen/.test(el.allow || ''))) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 400 || r.height < 200 || !visible(el)) continue;
+      if (r.width * r.height > area) { area = r.width * r.height; best = el; }
+    }
+    return best;
+  }
+  const player = () => (YT ? location.pathname === '/watch' && document.querySelector('#movie_player') : pseudo || findPlayer());
   const isShorts = () => YT && location.pathname.startsWith('/shorts');
+  const isCard = (el) => !!el && (YT ? el.matches(CARDS) : cards.has(el));
+
+  // Tarjeta = article/li/"card" con imagen y un solo destino: se elige entera, no link por link
+  function cardOf(el) {
+    const c = el.closest('article, li, [class*="card" i]');
+    if (!c || c === el || !c.querySelector('img, picture, [style*="background-image"]')) return el;
+    const hrefs = new Set([...c.querySelectorAll('a[href]')].map((a) => a.getAttribute('href')));
+    if (hrefs.size > 2 || c.querySelectorAll('button, input, select').length > 2) return el;
+    const r = c.getBoundingClientRect();
+    if (r.width > innerWidth * 0.8 || r.height > innerHeight * 0.8) return el;
+    cards.add(c);
+    return c;
+  }
 
   function candidates() {
     let list;
+    const p = player();
     if (YT) {
       list = [...document.querySelectorAll(CARDS)].filter((el) => !el.parentElement.closest(CARDS));
       list.push(...[...document.querySelectorAll(YT_OTHERS)].filter((el) => !el.closest(CARDS)));
-      const p = player();
-      if (p) list.push(p);
     } else {
       const all = [...document.querySelectorAll(GENERIC)];
       const set = new Set(all);
-      list = all.filter((el) => { for (let a = el.parentElement; a; a = a.parentElement) if (set.has(a)) return false; return true; });
+      list = [...new Set(all
+        .filter((el) => { for (let a = el.parentElement; a; a = a.parentElement) if (set.has(a)) return false; return true; })
+        .map(cardOf))];
     }
-    // Lo que está dentro del reproductor no cuenta (el reproductor es un solo lugar)
-    const p = player();
-    return list.filter((el) => (!p || el === p || !p.contains(el)) && visible(el));
+    if (p) list.push(p);
+    // Lo que está dentro del reproductor no cuenta (el reproductor es un solo lugar). Fuera de
+    // YouTube tampoco lo que está corrido a los costados (carruseles), que no se puede ver.
+    return list.filter((el) => (!p || el === p || !p.contains(el)) && visible(el) && (YT || floating(el) || (() => {
+      const r = el.getBoundingClientRect();
+      return r.right > 0 && r.left < innerWidth;
+    })()));
   }
 
   // Lo que flota (barra de arriba, menú lateral: position fixed/sticky) se trata aparte del contenido:
@@ -142,6 +180,18 @@
       // Desde la barra o el menú: a otro lugar fijo o a algo del contenido que se vea en pantalla
       return pick(from, dir, list.filter((el) => floating(el) || uncovered(el)));
     }
+    // En una grilla de tarjetas, ↑/↓ pasan a la fila de al lado aunque esté corrida (última fila incompleta)
+    if (isCard(from) && (dir === 'up' || dir === 'down')) {
+      const a = from.getBoundingClientRect();
+      const row = list.filter((el) => {
+        if (!isCard(el) || floating(el)) return false;
+        const b = el.getBoundingClientRect();
+        const gap = dir === 'down' ? b.top - a.bottom : a.top - b.bottom;
+        return gap > -a.height * 0.3 && gap < a.height * 0.75;
+      });
+      const best = pick(from, dir, row);
+      if (best) return best;
+    }
     // Desde el contenido: primero el contenido (aunque esté fuera de la vista, así se scrollea)
     return pick(from, dir, list.filter((el) => !floating(el)))
       || pick(from, dir, list.filter((el) => floating(el)));
@@ -156,9 +206,9 @@
   // Lugar de partida: lo que recordamos de esta página, el reproductor o el primer video a la vista
   function start() {
     const list = candidates();
-    const key = memo.get(location.href);
+    const key = memoGet();
     if (key) {
-      const hit = list.find((el) => el.matches(CARDS) && linkOf(el) === key);
+      const hit = list.find((el) => isCard(el) && linkOf(el) === key);
       if (hit) return hit;
     }
     const p = player();
@@ -168,7 +218,7 @@
       const r = el.getBoundingClientRect();
       return r.top >= top - 4 && r.bottom <= innerHeight + r.height * 0.5 && r.left >= 0;
     });
-    const main = YT ? inView.filter((el) => el.matches(CARDS)) : [];
+    const main = inView.filter(isCard);
     const pool = main.length ? main : inView.length ? inView : list;
     pool.sort((x, y) => {
       const a = x.getBoundingClientRect(), b = y.getBoundingClientRect();
@@ -181,10 +231,11 @@
     cur = el;
     show();
     if (!el) return;
-    if (el.matches(CARDS)) { const k = linkOf(el); if (k) memo.set(location.href, k); }
+    if (isCard(el)) { const k = linkOf(el); if (k) memoSet(k); }
     const r = el.getBoundingClientRect();
     const top = YT ? 64 : 0;
-    if (r.top < top || r.bottom > innerHeight - 8) {
+    // También si lo tapa una barra fija del sitio
+    if (r.top < top || r.bottom > innerHeight - 8 || (!floating(el) && !uncovered(el))) {
       const big = r.height > innerHeight * 0.7;
       el.scrollIntoView({ block: big ? 'start' : 'center', inline: 'nearest', behavior: 'smooth' });
     }
@@ -216,16 +267,53 @@
     if (v.paused) { v.play(); say('▶'); } else { v.pause(); say('❚❚'); }
   }
 
+  // Fuera de YouTube el video suele estar en un iframe de otro dominio: bg.js lo maneja en todos los frames
+  function media(cmd, s) {
+    if (!YT) return { media: cmd, s };
+    if (cmd === 'seek') seek(s); else if (cmd === 'play') togglePlay(); else if (cmd === 'cc') subtitles();
+    return {};
+  }
+
+  // Pantalla completa fuera de YouTube: el reproductor ocupa toda la ventana y bg.js pone la
+  // ventana en pantalla completa (un iframe no se puede poner en pantalla completa sin un clic real)
+  function setPseudo(el) {
+    if (!document.getElementById('__pitv_css')) {
+      const st = document.createElement('style');
+      st.id = '__pitv_css';
+      st.textContent = '.__pitv_full{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;'
+        + 'max-width:none!important;max-height:none!important;margin:0!important;border:0!important;transform:none!important;'
+        + 'z-index:2147483646!important;background:#000!important}html.__pitv_lock,html.__pitv_lock body{overflow:hidden!important}';
+      document.documentElement.appendChild(st);
+    }
+    if (pseudo) pseudo.classList.remove('__pitv_full');
+    document.documentElement.classList.toggle('__pitv_lock', !!el);
+    if (el) el.classList.add('__pitv_full');
+    pseudo = el;
+  }
+  function exitFull() {
+    if (pseudo) { const p = pseudo; setPseudo(null); cur = p; return { winFull: false }; }
+    if (document.fullscreenElement) document.exitFullscreen();
+    return {};
+  }
+  function full() {
+    if (YT) return { key: 'f' }; // la tecla f real de YouTube (necesita un gesto de verdad)
+    if (pseudo || document.fullscreenElement) return exitFull();
+    const p = player();
+    if (!p) { say('No hay video'); return {}; }
+    setPseudo(p); cur = p;
+    return { winFull: true };
+  }
+
   // ---------- Acciones ----------
   const editable = (el) => el && (el.isContentEditable || el.tagName === 'TEXTAREA'
     || (el.tagName === 'INPUT' && TEXT_IN.test(el.type || 'text')));
 
   function activate() {
     if (!cur || !cur.isConnected || !shown) { move('down'); return {}; }
-    if (cur === player()) { togglePlay(); return {}; }
+    if (cur === player()) return media('play');
     if (editable(cur)) { cur.focus(); if (cur.select) cur.select(); return { editable: true }; }
     let target = cur;
-    if (YT && cur.matches(CARDS)) {
+    if (isCard(cur)) {
       target = cur.querySelector('a#thumbnail[href], a[href*="/watch"], a[href^="/shorts/"], a[href*="/playlist"], a#main-link[href], a[href]') || cur;
     } else if (!cur.matches('a, button, input, select, [role=button], [role=tab]')) {
       target = cur.querySelector('a[href], button, [role=button], [role=tab]') || cur;
@@ -234,26 +322,41 @@
     return {};
   }
 
+  const SEARCH = 'input[type=search], input[name=q], input[name=s], input[name=search], input[name=query], '
+    + 'input[placeholder*="usca" i], input[placeholder*="earch" i], input[aria-label*="usca" i], input[aria-label*="earch" i]';
   function search() {
-    const input = document.querySelector('input[name="search_query"]');
-    if (!input) return { ok: false };
+    const input = document.querySelector(YT ? 'input[name="search_query"]' : SEARCH);
+    if (!input) return YT ? { ok: false } : { gotoYouTube: true }; // el sitio no tiene buscador: buscar en YouTube
+    if (!visible(input)) {
+      // buscador escondido detrás de un botón (lupa)
+      const t = document.querySelector('button[aria-label*="usca" i], button[title*="usca" i], button[aria-label*="earch" i]'
+        + (input.id ? `, label[for="${CSS.escape(input.id)}"]` : ''));
+      if (t) t.click();
+    }
     focusEl(input);
     input.focus(); input.select();
     return { editable: true };
   }
 
   function back() {
-    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    if (pseudo || document.fullscreenElement) return exitFull();
     const a = document.activeElement;
-    if (editable(a)) { a.blur(); return; }
+    if (editable(a)) { a.blur(); return {}; }
     history.back();
+    return {};
   }
 
   function home() {
+    if (!YT) {
+      // Inicio del sitio; si ya se está ahí, a YouTube
+      if (location.pathname !== '/' || location.search) { location.href = location.origin + '/'; return {}; }
+      return { gotoYouTube: true };
+    }
     const logo = document.querySelector('ytd-topbar-logo-renderer a, a#logo');
     if (logo && location.pathname !== '/') logo.click();
     else if (location.pathname === '/') { scrollTo({ top: 0, behavior: 'smooth' }); focusEl(null); setTimeout(() => focusEl(start()), 400); }
     else location.href = 'https://www.youtube.com/';
+    return {};
   }
 
   function shorts(dir) {
@@ -262,33 +365,70 @@
     else document.dispatchEvent(new KeyboardEvent('keydown', { key: dir === 'down' ? 'ArrowDown' : 'ArrowUp', bubbles: true }));
   }
 
+  // Botones del panel de video del celular
+  function subtitles() {
+    const b = document.querySelector('.ytp-subtitles-button');
+    if (!b || b.style.display === 'none') { say('Sin subtítulos'); return; }
+    b.click();
+    setTimeout(() => say(b.getAttribute('aria-pressed') === 'true' ? 'Subtítulos: sí' : 'Subtítulos: no'), 150);
+  }
+
   function nav(a) {
-    const onPlayer = shown && cur && cur === player();
+    markActive(true);
+    if (a === 'play') return media('play');
+    if (a === 'rw5' || a === 'ff5') return media('seek', a === 'rw5' ? -5 : 5);
+    if (a === 'cc') return media('cc');
+    if (a === 'full') return full();
     if (a === 'search') return search();
-    if (a === 'home') { home(); return {}; }
-    if (a === 'back') { back(); return {}; }
+    if (a === 'home') return home();
+    if (a === 'back') return back();
+    const p = player();
     if (isShorts() && ['up', 'down', 'ok'].includes(a)) {
       if (a === 'ok') togglePlay(); else shorts(a);
       hide(); return {};
     }
-    if (document.fullscreenElement && player()) {
+    if ((document.fullscreenElement || pseudo) && p) {
       // Viendo en pantalla completa: ←/→ adelantan, OK pausa, ↑/↓ salen para elegir otra cosa
-      if (a === 'left' || a === 'right') { seek(a === 'left' ? -10 : 10); return {}; }
-      if (a === 'ok') { togglePlay(); return {}; }
-      document.exitFullscreen(); cur = player(); show(); return {};
+      if (a === 'left' || a === 'right') return media('seek', a === 'left' ? -10 : 10);
+      if (a === 'ok') return media('play');
+      const res = exitFull(); cur = p; show(); return res;
     }
-    if (onPlayer && (a === 'left' || a === 'right')) { seek(a === 'left' ? -10 : 10); return {}; }
+    const onPlayer = shown && cur && cur === p;
+    if (onPlayer && (a === 'left' || a === 'right')) return media('seek', a === 'left' ? -10 : 10);
     if (a === 'ok') return activate();
     move(a);
     return {};
   }
 
   chrome.runtime.onMessage.addListener((m, _sender, reply) => {
+    if (m && m.toast) { say(m.toast); return; }
     if (!m || !m.nav) return;
     let res = {};
     try { res = nav(m.nav) || {}; } catch (ex) { res = { ok: false, err: String(ex) }; }
-    reply({ ok: res.ok !== false, editable: !!res.editable });
+    reply({ ...res, ok: res.ok !== false, editable: !!res.editable });
   });
+
+  // Elegir dónde empezar cuando la página termina de dibujarse (reintenta un rato)
+  function resume() {
+    let tries = 0;
+    const t = setInterval(() => {
+      const el = start();
+      if ((el && (el === player() || isCard(el))) || ++tries > 20) { clearInterval(t); if (el) focusEl(el); }
+    }, 150);
+  }
+  if (wasActive()) setTimeout(resume, 300);
+
+  // Avisar si en esta página hay un video (el celular muestra los controles del video)
+  let lastWatch = null;
+  function report() {
+    const w = YT ? (location.pathname === '/watch' || location.pathname.startsWith('/shorts')) : !!player();
+    if (w === lastWatch) return;
+    lastWatch = w;
+    try { chrome.runtime.sendMessage({ watch: w }); } catch {}
+  }
+  report();
+  setInterval(() => { if (!document.hidden) report(); }, 1500);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastWatch = null; report(); } });
 
   // YouTube cambia de página sin recargar: al terminar, elegir de nuevo dónde empezar
   if (YT) {
@@ -300,12 +440,7 @@
       floatCache = new WeakMap();
       if (!was) return;
       hide();
-      // esperar a que se dibujen los videos
-      let tries = 0;
-      const t = setInterval(() => {
-        const el = start();
-        if ((el && (el === player() || el.matches(CARDS))) || ++tries > 20) { clearInterval(t); focusEl(el); }
-      }, 150);
+      resume(); // esperar a que se dibujen los videos
     });
   }
 })();
