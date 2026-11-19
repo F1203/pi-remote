@@ -74,9 +74,15 @@
   // (fracción 0..1). Sirve para esconderlo en la esquina y para hacer un clic real en un reproductor.
   let ownMouseUntil = 0;   // movimientos pedidos por nosotros: no esconden el recuadro
   let lastMouse = null;    // última posición vista en esta página {x, y, t}
-  function mouseTo(fx, fy, click) {
+  function mouseTo(fx, fy, click, park) {
     ownMouseUntil = performance.now() + 900;
-    try { chrome.runtime.sendMessage({ mouse: { fx, fy, click: !!click } }); } catch {}
+    try { chrome.runtime.sendMessage({ mouse: { fx, fy, click: !!click, park: !!park } }); } catch {}
+  }
+  // Dónde esconder el puntero: normalmente en la esquina de abajo a la derecha (lo hace el servidor),
+  // pero con un reproductor agrandado (animeav1) esa esquina cae sobre sus controles y no los deja
+  // esconderse: ahí va al centro, donde el reproductor lo oculta solo al rato.
+  function parkSpot() {
+    if (pseudo) mouseTo(0.5, 0.5, false, true); else mouseTo(1, 1, false, true);
   }
 
   // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
@@ -140,7 +146,7 @@
     say('▶');
     // Dejar que el reproductor arranque y después esconder el puntero
     await sleep(1200);
-    mouseTo(1, 1);
+    parkSpot();
   }
 
   // ---------- Candidatos ----------
@@ -384,7 +390,7 @@
     pseudo = el;
   }
   function exitFull() {
-    if (pseudo) { const p = pseudo; setPseudo(null); cur = p; return { winFull: false }; }
+    if (pseudo) { const p = pseudo; setPseudo(null); cur = p; parkSpot(); return { winFull: false }; }
     if (document.fullscreenElement) document.exitFullscreen();
     return {};
   }
@@ -393,7 +399,7 @@
     if (pseudo || document.fullscreenElement) return exitFull();
     const p = player();
     if (!p) { say('No hay video'); return {}; }
-    setPseudo(p); cur = p;
+    setPseudo(p); cur = p; parkSpot();
     return { winFull: true };
   }
 
@@ -569,7 +575,7 @@
       const p = player();
       if (!p) return;
       fullDone.add(href);
-      setPseudo(p); cur = p;
+      setPseudo(p); cur = p; parkSpot();
       try { chrome.runtime.sendMessage({ winFull: true }); } catch {}
       // Y darle play: esperar a que la ventana termine de agrandarse y el reproductor cargue;
       // bg.js no lo toca si ya se está reproduciendo y, si hace falta, pide el clic real

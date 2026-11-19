@@ -380,6 +380,8 @@ async def handle_extension(ws):
             elif m.get("t") == "mouse":  # modo tele: mover el puntero (y hacer clic) en un punto
                 await wake()
                 await abs_move(float(m.get("fx", 1)), float(m.get("fy", 1)), bool(m.get("click")))
+                if m.get("park"):  # lugar elegido para esconder el puntero (p. ej. el centro de un video)
+                    pointer["parked"] = True
             elif m.get("t") == "tvstate":
                 tv_state["watch"] = bool(m.get("watch"))
                 send_all(json.dumps({"t": "tv", **tv_state}))

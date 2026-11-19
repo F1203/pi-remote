@@ -70,6 +70,8 @@ En modo tele, la cruceta sirve para usar YouTube (y otros sitios) en Brave como 
   ↑/↓, no vuelve a entrar. Si se estaba usando el trackpad, no pasa.
 - **Puntero escondido:** al usar la cruceta, el puntero se va a la esquina de abajo a la derecha
   (queda fuera de la pantalla). Lo mueve un mouse absoluto virtual del servidor (`pi-remote-abs`).
+  Con el reproductor de otro sitio agrandado (animeav1) va al centro, porque en la esquina dejaría
+  los controles del reproductor siempre a la vista.
 - **Reproductores que piden un clic** (animeav1): si OK / play no logra arrancar el video por
   código, se hace un clic real en el centro del reproductor. Para acertar, la página mueve el
   puntero a uno o dos puntos fuera del video, mira dónde aparece y corrige la cuenta.
