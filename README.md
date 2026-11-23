@@ -107,9 +107,13 @@ los accesos rápidos cambian a **Mi lista**, **Horario** y **Catálogo**.
   episodios con captura (✓ = visto; en series largas, de a 50). **Catálogo:** filtros de orden, tipo,
   estado y género (trae más al bajar). **Horario:** lo que salió hoy, ayer y los días anteriores.
   **Buscar:** escribe con el teclado del celular. **Audio:** SUB o DUB, se recuerda.
+- **Opciones («clic derecho»):** mantener apretado OK en el celular (o clic derecho del trackpad,
+  o la tecla Menú / M) abre un menú sobre la tarjeta elegida: ir a la serie, agregar a / quitar de
+  mi lista y quitar de «Seguir viendo». Viendo un episodio, el menú es de esa serie.
 - **Reproductor:** a pantalla completa y con play solo. ←/→ ±10 s, OK pausa, ↓ (o ↑) abre el panel:
   episodio anterior/siguiente, subtitulado/doblado, **servidor** (HLS primero; el último elegido a
-  mano se recuerda) y volver a los episodios. Al terminar un episodio pasa solo al siguiente en 10 s.
+  mano se recuerda) y **Episodios**, que siempre lleva a la página de la serie (Atrás, en cambio,
+  vuelve a donde se estaba). Al terminar un episodio pasa solo al siguiente en 10 s.
   Al volver a un episodio sigue desde donde quedó.
 - **Cómo funciona:** `anime.py` lee los datos de animeav1 (`/<página>/__data.json` de SvelteKit) y
   los entrega simplificados en `/anime/api/...`; también guarda mi lista, seguir viendo, vistos y

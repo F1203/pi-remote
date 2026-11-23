@@ -32,7 +32,8 @@ button { font: inherit; color: inherit; }
 }
 #barra .marca { font-weight: 800; font-size: 1.5rem; letter-spacing: 0.02em; margin-right: 1.4rem; }
 #barra .marca span { color: var(--acento2); }
-#barra .reloj { margin-left: auto; font-size: 1.3rem; color: var(--suave); font-variant-numeric: tabular-nums; }
+#barra .pista { margin-left: auto; color: #6f788a; font-size: 0.9rem; }
+#barra .reloj { margin-left: 1.6rem; font-size: 1.3rem; color: var(--suave); font-variant-numeric: tabular-nums; }
 .menu {
   border: 0; background: none; padding: 0.45rem 1rem; border-radius: 999px;
   font-size: 1.05rem; color: var(--suave); font-weight: 600;
@@ -166,6 +167,15 @@ body.viendo #reproductor { display: block; }
 #aviso.abierto { display: block; }
 #aviso h3 { margin: 0 0 0.3rem; font-size: 1.5rem; }
 #aviso p { margin: 0 0 1rem; color: var(--suave); }
+
+/* ---------- Menú de opciones ---------- */
+#menu { position: fixed; inset: 0; z-index: 60; background: #000a; display: none; place-items: center; }
+#menu.abierto { display: grid; }
+#menu .panel { background: var(--panel); border-radius: 1.2rem; padding: 1.8rem 2.2rem; min-width: 26rem; max-width: 40rem; box-shadow: 0 1rem 4rem #000; }
+#menu h3 { margin: 0; font-size: 1.6rem; }
+#menu p { margin: 0.2rem 0 0; color: var(--suave); }
+#m-opciones { display: flex; flex-direction: column; gap: 0.7rem; margin-top: 1.3rem; }
+#m-opciones .boton { width: 100%; justify-content: center; }
 
 /* ---------- Mensajes ---------- */
 #toast {

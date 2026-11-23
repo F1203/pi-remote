@@ -78,6 +78,7 @@ window.addEventListener('message', (ev) => {
 let foco = null;
 const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
 function capa() {
+  if (menuAbierto()) return $('#menu');
   if ($('#aviso').classList.contains('abierto')) return $('#aviso');
   if (viendo) return $('#controles').classList.contains('abierto') ? $('#controles') : null;
   return $('#app');
@@ -189,6 +190,13 @@ function accion(a) {
     if (a === 'cc') return { media: 'cc' };
     return { media: 'seek', s: a === 'rw5' ? -5 : 5 };
   }
+  if (menuAbierto()) {
+    if (a === 'menu' || a === 'back') { cerrarMenu(); return {}; }
+    if (a === 'ok') return activar(foco);
+    if (['up', 'down', 'left', 'right'].includes(a)) { mover(a); return {}; }
+    cerrarMenu(); // otra cosa (Inicio, Buscar…): cerrar el menú y seguir
+  }
+  if (a === 'menu') return abrirMenu();
   if (a === 'home' || a === 'anime') { if (ruta().nombre === 'inicio' && !viendo) { scrollTo({ top: 0, behavior: 'smooth' }); enfocar(inicial()); } else irA('#/'); return {}; }
   if (a === 'search') { irA('#/buscar'); return { editable: true }; }
   if (a === 'horario' || a === 'catalogo' || a === 'lista') { irA('#/' + a); return {}; }
@@ -218,7 +226,7 @@ function atras() {
   if (a && a.tagName === 'INPUT') { a.blur(); return {}; }
   if ($('#aviso').classList.contains('abierto')) { cancelarSiguiente(); return {}; }
   if (viendo && $('#controles').classList.contains('abierto')) { cerrarControles(); return {}; }
-  if (viendo) { irDeVideoASerie(); return {}; }
+  if (viendo) { if (haciaAtras) history.back(); else irDeVideoASerie(); return {}; }
   if (ruta().nombre === 'inicio') {
     // En el inicio: subir y, si ya está arriba, no hacer nada (para salir: botón YouTube)
     if (scrollY > 10 || (foco && filaDe(foco) && filaDe(foco).dataset.fila !== 'hero')) { scrollTo({ top: 0, behavior: 'smooth' }); enfocar(inicial()); }
@@ -231,7 +239,8 @@ let haciaAtras = false; // si se entró a alguna página desde esta app (si no, 
 
 // Teclado de verdad (sin extensión, o al probar con un teclado)
 document.addEventListener('keydown', (ev) => {
-  const k = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'back' }[ev.key]
+  const k = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'back', ContextMenu: 'menu' }[ev.key]
+    || ((ev.key === 'm' || ev.key === 'M') && document.activeElement.tagName !== 'INPUT' ? 'menu' : null)
     || (ev.key === 'Backspace' && document.activeElement.tagName !== 'INPUT' ? 'back' : null)
     || (ev.key === 'ArrowLeft' && ev.altKey ? 'back' : null);
   if (!k) return;
@@ -251,6 +260,14 @@ document.addEventListener('click', (ev) => {
   activar(el);
 });
 
+// Clic derecho (trackpad): el menú de opciones de esa tarjeta
+document.addEventListener('contextmenu', (ev) => {
+  ev.preventDefault();
+  const el = ev.target.closest('[data-f]');
+  if (el && !menuAbierto()) enfocar(el);
+  if (menuAbierto()) cerrarMenu(); else abrirMenu();
+});
+
 // ---------- Rutas ----------
 function ruta() {
   const [camino, qs] = (location.hash.slice(1) || '/').split('?');
@@ -267,10 +284,12 @@ let paginaActual = '';
 window.addEventListener('hashchange', render);
 
 async function render() {
-  if (paginaActual && foco && !viendo) memo.set(paginaActual, { k: foco.dataset.k, y: scrollY });
+  if (paginaActual && foco && !viendo) memo.set(paginaActual, { k: foco.dataset.k, fila: (filaDe(foco) || {}).dataset?.fila, y: scrollY });
   const r = ruta();
   const h = location.hash || '#/';
+  if (r.nombre === 'ver' && paginaActual && !paginaActual.startsWith('#/ver/')) vinoDe = paginaActual;
   paginaActual = h;
+  cerrarMenu();
   if (r.nombre === 'ver') { await ver(r.p[1], r.p[2]); return; }
   salirDelVideo();
   document.querySelectorAll('#barra .menu').forEach((b) => b.classList.toggle('activo', b.dataset.ir === '#/' + (r.nombre === 'inicio' ? '' : r.nombre)));
@@ -287,7 +306,9 @@ async function render() {
   }
   if (paginaActual !== h) return; // ya se fue a otra página mientras cargaba
   const m = memo.get(h);
-  const el = m && m.k && document.querySelector(`#pantalla [data-k="${CSS.escape(m.k)}"]`);
+  // La misma tarjeta, en la misma fila si está (una serie puede estar en varias filas)
+  const el = m && m.k && ((m.fila && document.querySelector(`#pantalla [data-fila="${CSS.escape(m.fila)}"] [data-k="${CSS.escape(m.k)}"]`))
+    || document.querySelector(`#pantalla [data-k="${CSS.escape(m.k)}"]`));
   if (el) { scrollTo({ top: m.y }); enfocar(el, { suave: false }); } else { scrollTo({ top: 0 }); enfocar(inicial(), { suave: false }); }
 }
 function inicial() {
@@ -296,18 +317,19 @@ function inicial() {
 
 // ---------- Tarjetas ----------
 function tPortada(s, { sub = '', insignia = '' } = {}) {
-  return `<div class="tarjeta" data-f data-k="s:${esc(s.slug)}" data-ir="#/serie/${esc(s.slug)}">
+  return `<div class="tarjeta" data-f data-k="s:${esc(s.slug)}" data-ir="#/serie/${esc(s.slug)}" ${datosSerie(s)}>
     <div class="img"><img loading="lazy" src="${IMG.portada(s.id)}" data-alt="${IMG.mini(s.id)}" alt="">
     ${insignia ? `<span class="insignia">${esc(insignia)}</span>` : ''}</div>
     <div class="titulo ${sub ? 'con-sub' : ''}">${esc(s.title)}</div>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</div>`;
 }
 function tEpisodio(s, n, { titulo, sub = '', k, progreso, visto, inicialAttr = '', ir } = {}) {
-  return `<div class="tarjeta ancha" data-f ${inicialAttr} data-k="${esc(k || `e:${s.slug}:${n}`)}" data-ir="${esc(ir || `#/ver/${s.slug}/${n}`)}">
+  return `<div class="tarjeta ancha" data-f ${inicialAttr} data-k="${esc(k || `e:${s.slug}:${n}`)}" data-ir="${esc(ir || `#/ver/${s.slug}/${n}`)}" ${datosSerie(s)} data-ep="${esc(n)}">
     <div class="img"><img loading="lazy" src="${IMG.captura(s.id, n)}" data-alt="${IMG.mini(s.id)}|${IMG.fondo(s.id)}" alt="">
     <span class="insignia">Ep ${n}</span>${visto ? '<span class="insignia visto">✓</span>' : ''}
     ${progreso ? `<div class="progreso"><i style="width:${Math.round(progreso * 100)}%"></i></div>` : ''}</div>
     <div class="titulo ${sub ? 'con-sub' : ''}">${esc(titulo ?? s.title)}</div>${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</div>`;
 }
+const datosSerie = (s) => `data-serie="${esc(s.slug)}" data-id="${esc(s.id)}" data-title="${esc(s.title)}"`;
 function fila(id, titulo, html, extra = '') {
   return html ? `<section class="fila"><h2>${titulo}${extra}</h2><div class="fila-items" data-fila="${id}">${html}</div></section>` : '';
 }
@@ -511,6 +533,7 @@ async function pLista(pant) {
 
 // ---------- Botones ----------
 function hacer(acc, el) {
+  if (acc.startsWith('m-')) return hacerMenu(acc);
   if (acc === 'reintentar') { cache.clear(); render(); return {}; }
   if (acc === 'youtube') { location.href = 'https://www.youtube.com/'; return {}; }
   if (acc === 'audio') {
@@ -700,8 +723,88 @@ function irDeVideoASerie() {
   const v = viendo;
   if (!v) return;
   const h = `#/serie/${encodeURIComponent(v.slug)}`;
-  // Si se llegó desde la serie, volver atrás; si no, reemplazar el video por la serie
-  if (haciaAtras) history.back(); else location.replace(h);
+  // Si se llegó desde esa misma serie, volver atrás (queda en el episodio elegido);
+  // si no (seguir viendo, últimos, horario…), cambiar el video por la página de la serie
+  if (haciaAtras && vinoDe && vinoDe.split('?')[0] === h) history.back(); else location.replace(h);
+}
+let vinoDe = ''; // página desde la que se abrió el episodio
+
+// ---------- Menú de opciones («clic derecho»: mantener OK en el celular) ----------
+let menuDe = null;   // la serie sobre la que se abrió
+let focoAntes = null;
+const menuAbierto = () => $('#menu').classList.contains('abierto');
+function abrirMenu() {
+  let d = null;
+  if (viendo && viendo.serie) d = { slug: viendo.slug, id: viendo.serie.id, title: viendo.serie.title, ep: viendo.ep, enVideo: true };
+  else if (foco && foco.isConnected && foco.dataset.serie) d = { slug: foco.dataset.serie, id: foco.dataset.id, title: foco.dataset.title, ep: foco.dataset.ep, el: foco };
+  else if (ruta().nombre === 'serie' && $('#pantalla [data-accion="lista"]')) {
+    const b = $('#pantalla [data-accion="lista"]');
+    d = { slug: b.dataset.slug, id: b.dataset.id, title: b.dataset.title };
+  }
+  if (!d) { toast('Elegí una serie para ver sus opciones'); return {}; }
+  menuDe = d;
+  focoAntes = foco;
+  const ops = [];
+  const enSuSerie = ruta().nombre === 'serie' && ruta().p[1] === d.slug;
+  if (!enSuSerie) ops.push(['m-serie', d.enVideo ? 'Ir a los episodios' : 'Ir a la serie']);
+  ops.push(estado.lista[d.slug] ? ['m-lista', 'Quitar de mi lista'] : ['m-lista', '+ Agregar a mi lista']);
+  if (estado.viendo[d.slug]) ops.push(['m-sv', 'Quitar de «Seguir viendo»']);
+  ops.push(['m-cerrar', 'Cancelar']);
+  $('#m-titulo').textContent = d.title || d.slug;
+  $('#m-sub').textContent = d.ep != null && d.ep !== '' ? `Episodio ${d.ep}` : '';
+  $('#m-opciones').innerHTML = ops.map(([acc, t], i) =>
+    `<div data-fila="m${i}"><button class="boton ${i === 0 ? 'principal' : ''}" data-f data-accion="${acc}">${esc(t)}</button></div>`).join('');
+  clearTimeout(ocultarT);
+  $('#menu').classList.add('abierto');
+  enfocar($('#m-opciones [data-f]'));
+  return {};
+}
+function cerrarMenu(volver = true) {
+  if (!menuAbierto()) return;
+  $('#menu').classList.remove('abierto');
+  if (volver) enfocar(focoAntes && focoAntes.isConnected && !viendo ? focoAntes : null);
+  if (viendo) cerrarControles(); // de vuelta al video, sin el panel
+}
+// Después de cambiar la lista o «seguir viendo»: volver a dibujar la página, con el foco en la
+// misma tarjeta o, si desapareció de su fila, en la de al lado
+function refrescar(quitada) {
+  if (viendo) return;
+  const el = menuDe && menuDe.el;
+  let k = el && el.dataset.k, fila = el && filaDe(el) && filaDe(el).dataset.fila;
+  if (quitada && el) {
+    const vecino = [el.nextElementSibling, el.previousElementSibling].find((x) => x && x.hasAttribute('data-f'));
+    if (vecino) k = vecino.dataset.k;
+    else { k = null; fila = null; }
+  }
+  memo.set(location.hash || '#/', { k, fila, y: scrollY });
+  paginaActual = '';
+  render();
+}
+function hacerMenu(acc) {
+  const d = menuDe;
+  if (!d) return {};
+  if (acc === 'm-cerrar') { cerrarMenu(); return {}; }
+  cerrarMenu(false);
+  if (acc === 'm-serie') { if (viendo) irDeVideoASerie(); else irA(`#/serie/${encodeURIComponent(d.slug)}`); return {}; }
+  if (acc === 'm-lista') {
+    const on = !estado.lista[d.slug];
+    guardar({ accion: 'lista', slug: d.slug, id: d.id, title: d.title, on: on ? 1 : 0 }).then(() => {
+      toast(on ? 'Agregada a mi lista' : 'Quitada de mi lista');
+      // En la fila/página «Mi lista» la tarjeta desaparece; en las demás solo se actualiza
+      const fila = d.el && filaDe(d.el) && filaDe(d.el).dataset.fila;
+      refrescar(!on && fila === 'lista');
+    });
+    return {};
+  }
+  if (acc === 'm-sv') {
+    guardar({ accion: 'quitar', slug: d.slug }).then(() => {
+      toast('Quitada de «Seguir viendo»');
+      const fila = d.el && filaDe(d.el) && filaDe(d.el).dataset.fila;
+      refrescar(fila === 'seguir' || fila === 'sv');
+    });
+    return {};
+  }
+  return {};
 }
 
 function salirDelVideo(cambiando = false) {

@@ -351,7 +351,7 @@ async def seek(seconds):
 NAV_KEYS = {"up": ("Up", ()), "down": ("Down", ()), "left": ("Left", ()), "right": ("Right", ()),
             "ok": ("Return", ()), "back": ("Left", ("alt",)), "search": ("l", ("ctrl",)),
             "play": ("space", ()), "rw5": ("Left", ()), "ff5": ("Right", ()), "cc": ("c", ()), "full": ("f", ())}
-NAV_ACTIONS = set(NAV_KEYS) | {"home", "subs", "horario", "catalogo", "anime", "lista"}
+NAV_ACTIONS = set(NAV_KEYS) | {"home", "subs", "horario", "catalogo", "anime", "lista", "menu"}
 tv_state = {"watch": False, "site": ""}  # si la pestaña activa de Brave es un video de YouTube (lo avisa la extensión)
 
 

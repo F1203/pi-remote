@@ -136,7 +136,7 @@
       <div id="dpad">
         <button data-nav="up" data-icon="up" title="Arriba"></button>
         <button data-nav="left" data-icon="left" title="Izquierda (en el video: atrasa 10 s)"></button>
-        <button data-nav="ok" title="Elegir (en el video: pausa / reproduce)">OK</button>
+        <button data-nav="ok" title="Elegir (en el video: pausa / reproduce). Mantener: opciones en el modo anime">OK</button>
         <button data-nav="right" data-icon="right" title="Derecha (en el video: adelanta 10 s)"></button>
         <button data-nav="down" data-icon="down" title="Abajo"></button>
       </div>
@@ -614,13 +614,16 @@
   }
 
   // Los botones actúan al soltar: así un toque largo solo muestra la ayuda
-  function tap(el, fn) {
+  function tap(el, fn, onLong) {
     let timer = 0, long = false, x0 = 0, y0 = 0;
     el.addEventListener('touchstart', (ev) => {
       ev.preventDefault(); el.classList.add('pressed'); long = false;
       x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY;
       clearTimeout(timer);
-      timer = setTimeout(() => { long = true; if (el.title) { showTip(el); vibrate(15); } }, 450);
+      timer = setTimeout(() => {
+        long = true;
+        if (onLong) { onLong(); vibrate(40); } else if (el.title) { showTip(el); vibrate(15); }
+      }, onLong ? 500 : 450);
     }, { passive: false });
     el.addEventListener('touchmove', (ev) => {
       const t = ev.touches[0];
@@ -757,7 +760,7 @@
     tap(el, () => {
       send({ t: 'nav', a }); vibrate(a === 'ok' || a === 'play' ? 20 : 10);
       if (a === 'search') openKb(); // dentro del toque, para que el celular muestre el teclado
-    });
+    }, a === 'ok' ? () => send({ t: 'nav', a: 'menu' }) : undefined); // mantener OK: opciones (modo anime)
   });
 
   // Ctrl y Shift fijos: al tocarlos quedan activos (azules) y se suman a todo lo que se teclee

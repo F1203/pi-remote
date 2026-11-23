@@ -573,6 +573,7 @@
   }
 
   function nav(a) {
+    if (a === 'menu') return { ok: false }; // mantener OK: solo el modo anime tiene menú de opciones
     markActive(true);
     if (LINKS[a]) return goLink(LINKS[a]);
     ownMouseUntil = performance.now() + 600; // el servidor acaba de esconder el puntero
