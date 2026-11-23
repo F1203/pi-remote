@@ -75,9 +75,10 @@
   #vidpad .sec button svg { width:24px; height:24px; }
   body.kb #vidpad .opt { display:none; }
   /* Accesos rápidos según el sitio abierto en Brave (lo avisa la extensión) */
-  .site-yt, .site-anime { display:none !important; }
+  .site-yt, .site-anime, .site-app { display:none !important; }
   body[data-site=youtube] .site-yt { display:block !important; }
-  body[data-site=animeav1] .site-anime { display:flex !important; }
+  body[data-site=animeav1] .site-anime, body[data-site=anime] .site-app { display:flex !important; }
+  body[data-site=anime] .no-app { display:none !important; }
   #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
 </style>
 </head>
@@ -120,6 +121,12 @@
       <button data-nav="home" data-icon="home" title="Inicio de YouTube"> Inicio</button>
       <button data-nav="search" data-icon="search" title="Buscar en YouTube (abre el teclado)"> Buscar</button>
       <button data-nav="subs" data-icon="subs" class="site-yt" title="Suscripciones de YouTube"> Suscrip.</button>
+      <button data-nav="anime" data-icon="star" class="no-app" title="Modo anime: animeav1 como una app de tele (seguir viendo, mi lista)"> Anime</button>
+    </div>
+    <div class="row site-app">
+      <button data-nav="lista" data-icon="bookmark" title="Mi lista del modo anime"> Mi lista</button>
+      <button data-nav="horario" data-icon="calendar" title="Episodios de esta semana"> Horario</button>
+      <button data-nav="catalogo" data-icon="grid" title="Catálogo con filtros"> Catálogo</button>
     </div>
     <div class="row site-anime">
       <button data-nav="horario" data-icon="calendar" title="Horario de AnimeAV1"> Horario</button>
@@ -584,6 +591,8 @@
     subs: 'M5 3h14M3 6h18M3 9h18v12H3zM10 12.5v5l4.5-2.5z',
     calendar: 'M4 5h16v16H4zM4 10h16M8 3v4M16 3v4',
     grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    star: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5l-5.4 3 1.2-6-4.5-4.2 6.1-.7z',
+    bookmark: 'M6 3h12v18l-6-4-6 4z',
     cc: 'M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM10.5 10a2.5 2.5 0 1 0 0 4M17.5 10a2.5 2.5 0 1 0 0 4',
   };
   document.querySelectorAll('[data-icon]').forEach((el) => {

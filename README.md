@@ -15,6 +15,7 @@ Control remoto de la Raspberry Pi desde el celular: trackpad, teclado, atajos de
 - `docs/`: la página. Es la misma que sirve la Pi y la que publica GitHub Pages.
 - `extension/`: extensión de Brave que avisa cuando se enfoca un campo de texto, adelanta videos y
   hace la navegación del modo tele (`tv.js`).
+- `anime.py` + `anime/`: modo anime (ver abajo). Lo guardado queda en `anime.json` (fuera del repo).
 
 Corre como servicio de usuario: `systemctl --user restart pi-remote`.
 
@@ -90,3 +91,27 @@ En modo tele, la cruceta sirve para usar YouTube (y otros sitios) en Brave como 
 El servidor reenvía `{t: "nav", a: ...}` a la extensión (`bg.js` → `tv.js` de la pestaña activa).
 Si la extensión no responde, manda teclas parecidas (flechas, Enter, Alt+←, Ctrl+L).
 Después de cambiar la extensión hay que recargarla en `brave://extensions`.
+
+## Modo anime
+
+Una pantalla propia, estilo Smart TV, con el contenido de animeav1.com: `http://<pi>:8080/anime/`.
+Se abre con el botón **Anime** del modo tele del celular (en la pestaña activa de Brave). Ahí
+los accesos rápidos cambian a **Mi lista**, **Horario** y **Catálogo**.
+
+- **Inicio:** destacado, *Seguir viendo*, últimos episodios, mi lista, recién agregados, en emisión,
+  populares y mejor puntuados. **Serie:** continuar / ver el episodio que toca, agregar a mi lista,
+  episodios con captura (✓ = visto; en series largas, de a 50). **Catálogo:** filtros de orden, tipo,
+  estado y género (trae más al bajar). **Horario:** lo que salió hoy, ayer y los días anteriores.
+  **Buscar:** escribe con el teclado del celular. **Audio:** SUB o DUB, se recuerda.
+- **Reproductor:** a pantalla completa y con play solo. ←/→ ±10 s, OK pausa, ↓ (o ↑) abre el panel:
+  episodio anterior/siguiente, subtitulado/doblado, **servidor** (HLS primero; el último elegido a
+  mano se recuerda) y volver a los episodios. Al terminar un episodio pasa solo al siguiente en 10 s.
+  Al volver a un episodio sigue desde donde quedó.
+- **Cómo funciona:** `anime.py` lee los datos de animeav1 (`/<página>/__data.json` de SvelteKit) y
+  los entrega simplificados en `/anime/api/...`; también guarda mi lista, seguir viendo, vistos y
+  preferencias en `anime.json`. La página tiene `<html data-pitv-app>`: con eso `tv.js` no la
+  navega, le pasa cada acción de la cruceta (`postMessage`) y hace lo que la página contesta
+  (`{media}`, `{winFull}`, `{editable}`). El reproductor de otro dominio avisa cómo va el video
+  desde `content.js` (`vprog`, vía `bg.js`). El servidor HLS solo se deja abrir desde animeav1:
+  `extension/rules.json` le pone ese `Referer` cuando lo abre esta página.
+- Sin extensión también se maneja con un teclado (flechas, Enter, Escape).

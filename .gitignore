@@ -1,2 +1,4 @@
 __pycache__/
 *.pyc
+anime.json
+anime.tmp

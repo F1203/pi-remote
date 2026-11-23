@@ -14,11 +14,13 @@ from websockets.asyncio.server import serve, broadcast
 from websockets.datastructures import Headers
 from websockets.http11 import Response
 
+import anime
 import ble
 
 PORT = 8080
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "docs"  # la misma carpeta que publica GitHub Pages
+ANIME = BASE / "anime"  # modo anime (pantalla para la tele, solo en la Pi)
 MODS = {"ctrl": e.KEY_LEFTCTRL, "shift": e.KEY_LEFTSHIFT, "alt": e.KEY_LEFTALT, "logo": e.KEY_LEFTMETA}
 # Nombres de tecla que manda la página -> códigos evdev (las letras no cambian de lugar en es/latam)
 KEYS = {
@@ -349,7 +351,7 @@ async def seek(seconds):
 NAV_KEYS = {"up": ("Up", ()), "down": ("Down", ()), "left": ("Left", ()), "right": ("Right", ()),
             "ok": ("Return", ()), "back": ("Left", ("alt",)), "search": ("l", ("ctrl",)),
             "play": ("space", ()), "rw5": ("Left", ()), "ff5": ("Right", ()), "cc": ("c", ()), "full": ("f", ())}
-NAV_ACTIONS = set(NAV_KEYS) | {"home", "subs", "horario", "catalogo"}
+NAV_ACTIONS = set(NAV_KEYS) | {"home", "subs", "horario", "catalogo", "anime", "lista"}
 tv_state = {"watch": False, "site": ""}  # si la pestaña activa de Brave es un video de YouTube (lo avisa la extensión)
 
 
@@ -504,10 +506,30 @@ def http_response(status, body, ctype):
     return Response(status.value, status.phrase, headers, body)
 
 
-def process_request(connection, request):
+ANIME_TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+               ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
+
+
+async def anime_request(path, query):
+    """Modo anime: la pantalla (anime/) y sus datos (/anime/api/...)."""
+    if path in ("/anime", "/anime/"):
+        path = "/anime/index.html"
+    if path.startswith("/anime/api/"):
+        status, data = await asyncio.to_thread(anime.api, path[len("/anime/api/"):], query)
+        return http_response(HTTPStatus(status), json.dumps(data, ensure_ascii=False), "application/json")
+    name = path[len("/anime/"):]
+    f = ANIME / name
+    if "/" not in name and f.suffix in ANIME_TIPOS and f.is_file():
+        return http_response(HTTPStatus.OK, f.read_bytes(), ANIME_TIPOS[f.suffix])
+    return http_response(HTTPStatus.NOT_FOUND, "not found", "text/plain")
+
+
+async def process_request(connection, request):
     path, _, query = request.path.partition("?")
     if path in ("/ws", "/ext"):
         return None
+    if path == "/anime" or path.startswith("/anime/"):
+        return await anime_request(path, query)
     if path == "/focus":
         # La extensión de Brave informa, tras cada clic, si quedó enfocado un campo de texto.
         # Solo se reenvía si responde a un clic reciente hecho desde el celular.

@@ -1,4 +1,16 @@
+// Modo anime: la página que sirve el servidor del control remoto
+const ANIME_URL = 'http://127.0.0.1:8080/anime/';
+const isAnime = (url) => /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(url || '');
+
 chrome.runtime.onMessage.addListener((m, sender) => {
+  if (m && m.vprog) { // content.js (iframe del reproductor): cómo va el video -> tv.js de la página
+    if (sender.tab) chrome.tabs.sendMessage(sender.tab.id, { vprog: m.vprog }, { frameId: 0 }).catch(() => {});
+    return;
+  }
+  if (m && 'seekTo' in m) { // modo anime: seguir desde donde había quedado
+    if (sender.tab) seekToTime(sender.tab.id, +m.seekTo).catch(() => {});
+    return;
+  }
   if (m && m.key) { // tv.js: tecla real (la f de pantalla completa de YouTube)
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'key', k: m.key }));
     return;
@@ -80,6 +92,22 @@ async function mediaCmd(cmd, s) {
   return false;
 }
 
+// Se ejecuta en cada frame: lleva el video a ese segundo (si ya cargó lo suficiente)
+function seekTo(t) {
+  const v = [...document.querySelectorAll('video')].filter((x) => x.readyState > 0 && x.duration > t)
+    .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
+  if (!v) return false;
+  v.currentTime = t;
+  return true;
+}
+async function seekToTime(tabId, t) {
+  for (let i = 0; i < 10; i++) {
+    const results = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: seekTo, args: [t] });
+    if (results.some((r) => r.result)) return;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
 async function runMedia(tabId, cmd, s) {
   const results = await chrome.scripting.executeScript({
     target: { tabId, allFrames: true }, func: mediaCmd, args: [cmd, s || 0],
@@ -158,6 +186,11 @@ async function tellTab(tabId, nav) {
 async function navActiveTab(nav) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) return { ok: false };
+  // Botón «Anime» del celular (o Mi lista fuera de la app): abrir el modo anime en esta pestaña
+  if ((nav === 'anime' || nav === 'lista') && !isAnime(tab.url)) {
+    await chrome.tabs.update(tab.id, { url: ANIME_URL + (nav === 'lista' ? '#/lista' : '') });
+    return { ok: true };
+  }
   let res = null;
   try { res = await tellTab(tab.id, nav); } catch {}
   if (!res) {
@@ -189,7 +222,8 @@ async function reportState() {
   // Sitio, para los botones de acceso rápido del celular (Suscripciones, Horario, Catálogo)
   const url = (tab && tab.url) || '';
   const site = /^https:\/\/([\w-]+\.)*youtube\.com\//.test(url) ? 'youtube'
-    : /^https:\/\/([\w-]+\.)*animeav1\.com\//.test(url) ? 'animeav1' : '';
+    : /^https:\/\/([\w-]+\.)*animeav1\.com\//.test(url) ? 'animeav1'
+    : isAnime(url) ? 'anime' : '';
   const key = watch + '|' + site;
   if (key === lastWatch) return;
   lastWatch = key;
@@ -198,6 +232,8 @@ async function reportState() {
 chrome.tabs.onActivated.addListener(() => reportState());
 chrome.tabs.onUpdated.addListener((id, info, tab) => {
   if (!info.url) return;
+  // El modo anime cambia de pantalla sin recargar (y él mismo avisa si hay video y la pantalla completa)
+  if (isAnime(info.url)) { reportState(); return; }
   watchByTab.delete(id); reportState();
   // Se fue de la página con el reproductor agrandado: devolver la ventana a como estaba
   if (prevState[tab.windowId] && tab.active) setWindowFull(tab.windowId, false).catch(() => {});

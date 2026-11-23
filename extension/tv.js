@@ -9,6 +9,9 @@
   window.__piTv = true;
 
   const YT = /(^|\.)youtube\.com$/.test(location.hostname);
+  // Modo anime (página del servidor con <html data-pitv-app>): la página hace su propia navegación;
+  // acá solo se le pasa cada acción y se hace lo que pide (video, pantalla completa, puntero)
+  const APP = document.documentElement.hasAttribute('data-pitv-app');
   // Una "tarjeta" se elige entera: miniatura, título, canal y menú son un solo lugar
   const CARDS = [
     'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-grid-video-renderer',
@@ -42,6 +45,8 @@
   let cur = null;        // elemento enfocado
   let shown = false;     // si el recuadro está visible
   let pseudo = null;     // reproductor agrandado a toda la ventana (pantalla completa "a mano")
+  let appFull = false;   // modo anime: la página está mostrando el reproductor a toda la ventana
+  let appWatch = false;  // modo anime: si hay un episodio abierto
   let cards = new WeakSet(); // tarjetas encontradas fuera de YouTube
   // Último video elegido en cada página, para volver al mismo al ir atrás (sobrevive a recargas)
   const memoGet = () => { try { return sessionStorage.getItem('pitv:' + location.href); } catch { return null; } };
@@ -102,9 +107,9 @@
   let parkT = 0;
   function parkSpot() {
     clearTimeout(parkT);
-    if (!pseudo) { mouseTo(1, 1, false, true); return; }
+    if (!pseudo && !appFull) { mouseTo(1, 1, false, true); return; }
     mouseTo(0.5, 0.5, false, true);
-    parkT = setTimeout(() => { if (pseudo) mouseTo(CENTER_X, 0.5, false, true); }, 1500);
+    parkT = setTimeout(() => { if (pseudo || appFull) mouseTo(CENTER_X, 0.5, false, true); }, 1500);
   }
 
   // Si se usa el trackpad (mouse de verdad), el recuadro se esconde hasta la próxima flecha
@@ -596,9 +601,48 @@
     return typeof res === 'object' ? res : {};
   }
 
+  // ---------- Modo anime: puente con la página ----------
+  let appId = 0;
+  const appWait = new Map();
+  function appNav(a) {
+    return new Promise((resolve) => {
+      const id = ++appId;
+      const t = setTimeout(() => { appWait.delete(id); resolve({ ok: false }); }, 2000);
+      appWait.set(id, (res) => { clearTimeout(t); resolve(res); });
+      window.postMessage({ pitvNav: a, id }, '*');
+    }).then((res) => {
+      ownMouseUntil = performance.now() + 600;
+      if ('winFull' in res) { appFull = !!res.winFull; setTimeout(parkSpot, 50); }
+      return res;
+    });
+  }
+  // Lo que pide la página: pantalla completa, play, seguir desde un segundo, esconder el puntero
+  function appReq(r) {
+    try {
+      if ('winFull' in r) { appFull = !!r.winFull; chrome.runtime.sendMessage({ winFull: appFull }); parkSpot(); }
+      if (r.autoplay) chrome.runtime.sendMessage({ autoplay: true });
+      if (r.seekTo != null) chrome.runtime.sendMessage({ seekTo: +r.seekTo });
+      if (r.park) parkSpot();
+      if ('watch' in r) { appWatch = !!r.watch; lastWatch = null; report(); }
+    } catch {}
+  }
+  if (APP) {
+    window.addEventListener('message', (ev) => {
+      if (ev.source !== window || !ev.data) return;
+      const d = ev.data;
+      if (d.pitvRes && appWait.has(d.pitvRes)) { const f = appWait.get(d.pitvRes); appWait.delete(d.pitvRes); f(d.res || {}); }
+      else if (d.pitvReq) appReq(d.pitvReq);
+    });
+  }
+
   chrome.runtime.onMessage.addListener((m, _sender, reply) => {
     if (m && m.toast) { say(m.toast); return; }
     if (m && m.realclick) { realClick(player()); return; }
+    if (m && m.vprog) { if (APP) window.postMessage({ pitvEv: { vprog: m.vprog } }, '*'); return; }
+    if (APP && m && m.nav) {
+      appNav(m.nav).then((res) => reply({ ...res, ok: res.ok !== false, editable: !!res.editable }));
+      return true; // la respuesta llega después
+    }
     if (!m || !m.nav) return;
     let res = {};
     try { res = nav(m.nav) || {}; } catch (ex) { res = { ok: false, err: String(ex) }; }
@@ -618,7 +662,7 @@
       }
     }, 150);
   }
-  if (wasActive()) setTimeout(resume, 300);
+  if (wasActive() && !APP) setTimeout(resume, 300);
 
   // Modo tele: al poner un video, pantalla completa sola (una vez por video; si se sale, se respeta)
   const fullDone = new Set();
@@ -659,7 +703,7 @@
   // Avisar si en esta página hay un video (el celular muestra los controles del video)
   let lastWatch = null;
   function report() {
-    const w = YT ? (location.pathname === '/watch' || location.pathname.startsWith('/shorts')) : !!player();
+    const w = APP ? appWatch : YT ? (location.pathname === '/watch' || location.pathname.startsWith('/shorts')) : !!player();
     if (w === lastWatch) return;
     lastWatch = w;
     try { chrome.runtime.sendMessage({ watch: w }); } catch {}

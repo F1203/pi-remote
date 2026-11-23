@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- data-pitv-app: la extensión (tv.js) le pasa la cruceta a esta página en vez de navegarla ella -->
+<html lang="es" data-pitv-app>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Anime TV</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div id="app">
+  <header id="barra" data-fila="menu">
+    <div class="marca">Anime<span>TV</span></div>
+    <button class="menu" data-f data-k="m:inicio" data-ir="#/">Inicio</button>
+    <button class="menu" data-f data-k="m:buscar" data-ir="#/buscar">Buscar</button>
+    <button class="menu" data-f data-k="m:lista" data-ir="#/lista">Mi lista</button>
+    <button class="menu" data-f data-k="m:horario" data-ir="#/horario">Horario</button>
+    <button class="menu" data-f data-k="m:catalogo" data-ir="#/catalogo">Catálogo</button>
+    <button class="menu" data-f data-k="m:audio" data-accion="audio" id="b-audio">Audio: SUB</button>
+    <button class="menu" data-f data-k="m:youtube" data-accion="youtube">YouTube</button>
+    <div class="reloj" id="reloj"></div>
+  </header>
+  <main id="pantalla"></main>
+</div>
+
+<div id="reproductor">
+  <div class="cargando" id="cargando">Cargando…</div>
+  <div id="controles" data-capa>
+    <h3 id="c-titulo"></h3>
+    <p class="ayuda" id="c-ayuda"></p>
+    <div class="botones" data-fila="c1" id="c-botones"></div>
+  </div>
+  <div id="aviso" data-capa>
+    <h3 id="a-titulo"></h3>
+    <p id="a-texto"></p>
+    <div class="botones" data-fila="a1">
+      <button class="boton principal" data-f data-accion="siguiente-ya">Ver ahora</button>
+      <button class="boton" data-f data-accion="cancelar-siguiente">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
