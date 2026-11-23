@@ -473,7 +473,7 @@ async def dispatch(m, client):
         await run("wpctl", "set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", step)
     elif t == "seek":
         ok = await seek(float(m.get("s", 85)))
-        await client.send(json.dumps({"t": "seekres", "ok": ok}))
+        await client.send(json.dumps({"t": "seekres", "ok": ok, "w": bool(m.get("w"))}))
     elif t == "nav":  # modo tele: up/down/left/right/ok/back/home/search
         a = str(m.get("a", ""))
         if a in NAV_ACTIONS:

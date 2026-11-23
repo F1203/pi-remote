@@ -83,6 +83,10 @@ En modo tele, la cruceta sirve para usar YouTube (y otros sitios) en Brave como 
 - **Reproductores que piden un clic** (animeav1): si OK / play no logra arrancar el video por
   código, se hace un clic real en el centro del reproductor. Para acertar, la página mueve el
   puntero a uno o dos puntos fuera del video, mira dónde aparece y corrige la cuenta.
+- **Rueda de la barra de reproducción:** con un video abierto, girar el dedo en círculos sobre la
+  cruceta adelanta (sentido horario) o atrasa (antihorario): una vuelta = 60 s, y girando rápido hasta
+  ×4. Vibra cortito por cada segundo, el OK muestra cuánto va («+12 s») y la tele, dónde quedó
+  («12:34 / 24:10»). Por eso, con un video abierto las flechas actúan al soltar (o al mantenerlas).
 - **Con un video abierto** (un video o Short de YouTube, o una página con reproductor) los botones de
   abajo cambian por un panel grande: −5 s · reproducir/pausar · +5 s, pantalla completa,
   subtítulos, y volumen / +1:25 / teclado. La extensión avisa el cambio (`tvstate`) y el servidor

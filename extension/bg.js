@@ -46,9 +46,14 @@ function seekVideo(seconds) {
     || videos.filter((x) => x.readyState > 0).sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
   if (!v) return false;
   const end = Number.isFinite(v.duration) ? v.duration - 0.5 : Infinity;
-  v.currentTime = Math.min(v.currentTime + seconds, end);
-  return true;
+  v.currentTime = Math.max(0, Math.min(v.currentTime + seconds, end));
+  return { t: v.currentTime, d: Number.isFinite(v.duration) ? v.duration : 0 };
 }
+const clock = (s) => {
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+};
 
 // Se ejecuta en cada frame: pausa / reproduce, adelanta o cambia subtítulos del video del frame.
 // Sirve para reproductores en iframes de otro dominio (animeav1 y similares).
@@ -162,7 +167,11 @@ async function seekActiveTab(seconds) {
   const results = await chrome.scripting.executeScript({
     target: { tabId: tab.id, allFrames: true }, func: seekVideo, args: [seconds],
   });
-  return results.some((r) => r.result === true);
+  const r = (results.find((x) => x.result) || {}).result;
+  if (!r) return false;
+  // En la tele: dónde quedó (sirve para la rueda del celular)
+  if (r.d) chrome.tabs.sendMessage(tab.id, { toast: `${clock(r.t)} / ${clock(r.d)}` }, { frameId: 0 }).catch(() => {});
+  return true;
 }
 
 // Modo tele: pasa la flecha / OK / atrás / inicio / buscar a la página de la pestaña activa (tv.js)

@@ -234,13 +234,15 @@
   const BLE = location.protocol === 'https:';
   // Mensajes continuos (mover, scroll, pellizco): si se pierde uno no importa, llega el siguiente
   const FAST = new Set(['m', 's', 'pu']);
+  let wheelFail = 0; // último aviso de «no hay video» por la rueda
   const vibrate = (ms = 10) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
   const setOk = (ok) => { $('status').classList.toggle('ok', ok); $('tvstatus').classList.toggle('ok', ok); body.classList.toggle('offline', BLE && !ok); };
   function onMsg(m) {
     if (m.t === 'hb') return;
     if (m.mtu) bleChunk = Math.max(20, Math.min(m.mtu - 3, 509));
     if (m.t === 'clickres') onClickResult(m);
-    else if (m.t === 'seekres' && !m.ok) { showTip($(body.classList.contains('watch') ? 'vidseek' : 'tvseek'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
+    else if (m.t === 'seekres' && !m.ok && m.w && Date.now() - wheelFail < 3000) { /* la rueda: avisar una sola vez */ }
+    else if (m.t === 'seekres' && !m.ok) { if (m.w) wheelFail = Date.now(); showTip($(body.classList.contains('watch') ? 'vidseek' : 'tvseek'), 'No encontré ningún video reproduciéndose'); vibrate(60); }
     else if (m.t === 'navres') { if (m.editable) openKb(); else if (m.a === 'ok' || m.a === 'back') closeKb(); }
     else if (m.t === 'sleep') body.classList.toggle('asleep', m.on);
     else if (m.t === 'mtu') bleChunk = Math.max(20, Math.min(m.n - 3, 509));
@@ -663,18 +665,91 @@
   tap($('vidseek'), () => { send({ t: 'seek', s: 85 }); vibrate(); });
   tap($('vidkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
   tap($('tvkb'), () => (body.classList.contains('kb') ? closeKb() : openKb()));
+  // Rueda: con un video abierto, girar el dedo sobre la cruceta mueve la barra de reproducción
+  // (horario adelanta, antihorario atrasa; una vuelta = 60 s, más rápido si se gira rápido).
+  // Una vibración cortita por cada segundo; en el OK se ve cuánto va.
+  const wheel = { on: false };
+  const arrowStops = [];
+  (() => {
+    const pad = $('dpad'), okBtn = pad.querySelector('[data-nav=ok]');
+    const DEG = 6;      // grados por segundo de video
+    const START = 35;   // grados de giro para que cuente como rueda y no como toque
+    let last = null, acc = 0, total = 0, pend = 0, lastT = 0, lastBuzz = 0, flushT = 0, okT = 0;
+    const where = (t) => {
+      const r = pad.getBoundingClientRect();
+      const x = t.clientX - (r.left + r.width / 2), y = t.clientY - (r.top + r.height / 2);
+      return { a: Math.atan2(y, x) * 180 / Math.PI, d: Math.hypot(x, y) / (r.width / 2) };
+    };
+    const flush = () => {
+      clearTimeout(flushT); flushT = 0;
+      if (pend) { send({ t: 'seek', s: pend, w: 1 }); pend = 0; }
+    };
+    pad.addEventListener('touchstart', (ev) => {
+      last = ev.touches.length === 1 ? where(ev.touches[0]) : null;
+      acc = 0; total = 0; pend = 0; wheel.on = false; lastT = performance.now();
+    }, { passive: true });
+    pad.addEventListener('touchmove', (ev) => {
+      if (!last || ev.touches.length !== 1 || !body.classList.contains('watch')) return;
+      const p = where(ev.touches[0]);
+      if (p.d < 0.25) { last = p; return; } // muy cerca del centro el ángulo salta
+      let da = p.a - last.a;
+      if (da > 180) da -= 360; else if (da < -180) da += 360;
+      const now = performance.now(), dt = Math.max(8, now - lastT);
+      last = p; lastT = now;
+      if (!wheel.on) {
+        acc += da;
+        if (Math.abs(acc) < START) return;
+        wheel.on = true; // es la rueda: las flechas no hacen lo suyo
+        arrowStops.forEach((f) => f());
+        clearTimeout(okT);
+        vibrate(15);
+        return;
+      }
+      const k = Math.min(4, Math.max(1, Math.abs(da) / dt * 1000 / 400)); // acelera girando rápido
+      const prev = total;
+      total += da / DEG * k;
+      const crossed = Math.trunc(total) - Math.trunc(prev);
+      if (!crossed) return;
+      pend += crossed;
+      if (now - lastBuzz > 30) { vibrate(4); lastBuzz = now; }
+      const n = Math.trunc(total);
+      okBtn.textContent = (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n) + ' s';
+      if (!flushT) flushT = setTimeout(flush, 120);
+    }, { passive: true });
+    const end = () => {
+      if (!wheel.on) return;
+      flush();
+      wheel.on = false;
+      clearTimeout(okT); okT = setTimeout(() => { okBtn.textContent = 'OK'; }, 900);
+    };
+    pad.addEventListener('touchend', (ev) => { if (!ev.touches.length) end(); });
+    pad.addEventListener('touchcancel', end);
+  })();
+
   document.querySelectorAll('[data-nav]').forEach((el) => {
     const a = el.dataset.nav;
-    // Las flechas se repiten mientras se mantienen apretadas
+    // Las flechas se repiten mientras se mantienen apretadas. Con un video abierto actúan al soltar
+    // (o al mantener), porque la cruceta también es la rueda de la barra de reproducción.
     if (['up', 'down', 'left', 'right'].includes(a)) {
-      let rep = 0;
+      let rep = 0, sent = false;
       const stop = () => { clearTimeout(rep); clearInterval(rep); rep = 0; el.classList.remove('pressed'); };
+      arrowStops.push(stop);
+      const fire = (ms) => { sent = true; send({ t: 'nav', a }); vibrate(ms); };
       el.addEventListener('touchstart', (ev) => {
-        ev.preventDefault(); el.classList.add('pressed');
-        send({ t: 'nav', a }); vibrate();
-        rep = setTimeout(() => { rep = setInterval(() => { send({ t: 'nav', a }); vibrate(5); }, 180); }, 450);
+        ev.preventDefault(); el.classList.add('pressed'); sent = false;
+        if (!body.classList.contains('watch')) fire(10);
+        rep = setTimeout(() => {
+          if (wheel.on) return;
+          fire(5);
+          rep = setInterval(() => fire(5), 180);
+        }, 450);
       }, { passive: false });
-      el.addEventListener('touchend', (ev) => { ev.preventDefault(); stop(); }, { passive: false });
+      el.addEventListener('touchend', (ev) => {
+        ev.preventDefault();
+        const pending = !sent && !wheel.on && el.classList.contains('pressed');
+        stop();
+        if (pending) fire(10);
+      }, { passive: false });
       el.addEventListener('touchcancel', stop);
       el.addEventListener('click', () => { if (!('ontouchstart' in window)) send({ t: 'nav', a }); });
       return;
