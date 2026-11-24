@@ -104,11 +104,12 @@ button { font: inherit; color: inherit; }
 .tarjeta.ancha .img { aspect-ratio: 16 / 9; }
 .tarjeta img { width: 100%; height: 100%; object-fit: cover; }
 .tarjeta img.sin-img { visibility: hidden; }
+/* Siempre dos renglones exactos (con padding, el recorte dejaba asomar un tercero) */
 .tarjeta .titulo {
-  padding: 0.5rem 0.7rem 0.6rem; font-size: 0.95rem; font-weight: 600;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 3.1rem;
+  margin: 0.5rem 0.7rem 0.6rem; font-size: 0.95rem; font-weight: 600; line-height: 1.3; height: 2.6em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.tarjeta .titulo.con-sub { min-height: 0; padding-bottom: 0; }
+.tarjeta .titulo.con-sub { margin-bottom: 0; }
 .tarjeta .sub { display: block; color: var(--suave); font-weight: 500; font-size: 0.85rem; padding: 0.1rem 0.7rem 0.6rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .insignia {
@@ -118,6 +119,20 @@ button { font: inherit; color: inherit; }
 .insignia.visto { left: auto; right: 0.5rem; background: var(--ok); color: #04140c; }
 .progreso { position: absolute; left: 0; right: 0; bottom: 0; height: 0.3rem; background: #ffffff40; }
 .progreso i { display: block; height: 100%; background: var(--acento); }
+
+/* ---------- Mi lista: grupos por día con una llave arriba ---------- */
+.grupo { flex: 0 0 auto; display: flex; flex-direction: column; }
+.grupo + .grupo { margin-left: 1.4rem; }
+.grupo.aparte { margin-left: 3rem; }
+.grupo-items { display: flex; gap: 1.1rem; }
+.llave { position: relative; height: 1.9rem; margin: 0 0.3rem 0.8rem; border: 0.18rem solid var(--acento2); border-bottom: 0;
+  border-radius: 0.7rem 0.7rem 0 0; opacity: 0.9; }
+.llave span { position: absolute; left: 50%; top: -0.95rem; transform: translateX(-50%); background: var(--fondo);
+  padding: 0 0.7rem; font-weight: 700; font-size: 1.15rem; white-space: nowrap; color: var(--texto); }
+.grupo.hoy .llave { border-color: var(--ok); }
+.grupo.hoy .llave span { color: var(--ok); }
+.grupo.aparte .llave { border-color: #ffffff40; border-style: dashed; }
+.grupo.aparte .llave span { color: var(--suave); }
 
 /* ---------- Detalle de una serie ---------- */
 .detalle { position: relative; isolation: isolate; margin-top: -5.2rem; padding: 7rem 3rem 0; display: flex; gap: 2.2rem; min-height: 30rem; }

@@ -93,10 +93,11 @@ function enfocar(el, { suave = true } = {}) {
   foco.classList.add('foco');
   const fila = filaDe(foco);
   // Fila horizontal: correrla para que la tarjeta quede a la vista
-  const cont = foco.parentElement;
-  if (cont && cont.classList.contains('fila-items') || cont && cont.classList.contains('chips')) {
+  const cont = foco.closest('.fila-items, .chips');
+  if (cont) {
     const pad = cont.clientWidth * 0.06;
-    const izq = foco.offsetLeft - cont.offsetLeft, der = izq + foco.offsetWidth;
+    const cr = cont.getBoundingClientRect(), fr = foco.getBoundingClientRect();
+    const izq = fr.left - cr.left + cont.scrollLeft, der = izq + fr.width;
     if (izq - pad < cont.scrollLeft) cont.scrollTo({ left: Math.max(0, izq - pad * 2), behavior: suave ? 'smooth' : 'auto' });
     else if (der + pad > cont.scrollLeft + cont.clientWidth) cont.scrollTo({ left: der + pad - cont.clientWidth, behavior: suave ? 'smooth' : 'auto' });
   }
@@ -377,8 +378,8 @@ async function pInicio(pant) {
   html += fila('ultimos', 'Últimos episodios', d.episodios.map((e) => tEpisodio(e, e.ep, {
     k: `u:${e.slug}:${e.ep}`, visto: (estado.vistos[e.slug] || []).includes(e.ep),
   })).join(''));
-  const lista = Object.entries(estado.lista).sort((a, b) => b[1].fecha - a[1].fecha);
-  html += fila('lista', 'Mi lista', lista.map(([slug, v]) => tPortada({ slug, id: v.id, title: v.title })).join(''));
+  const ml = await miListaPorDia().catch(() => null);
+  html += ml ? fila('lista', 'Mi lista', ml.html, ml.extra) : '';
   html += fila('nuevos', 'Recién agregados', d.nuevos.map((s) => tPortada(s, { sub: s.cat })).join(''));
   html += '<div id="mas-filas"></div>';
   pant.innerHTML = html;
@@ -521,12 +522,51 @@ async function buscarYa() {
   } catch (e) { $('#r-titulo').textContent = e.message; }
 }
 
+// Mi lista ordenada por día de emisión: las series en emisión agrupadas por día de la semana (desde
+// hoy), cada grupo con una llave que dice el día; después las próximas y las que ya terminaron.
+// El día sale del último episodio publicado (lo que trae el horario de animeav1).
+const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+async function miListaPorDia() {
+  const lista = Object.entries(estado.lista).map(([slug, v]) => ({ slug, id: v.id, title: v.title, fecha: v.fecha }));
+  if (!lista.length) return null;
+  const hz = await apiC('horario').catch(() => ({ media: [] }));
+  const enHorario = new Map(hz.media.map((m) => [m.slug, m]));
+  const hoy = new Date().getDay();
+  const porDia = DIAS.map(() => []), resto = [];
+  for (const s of lista) {
+    const m = enHorario.get(s.slug);
+    const f = m && m.fecha ? new Date(m.fecha) : null;
+    if (f && !isNaN(f)) porDia[f.getDay()].push({ ...s, ep: m.ep, f });
+    else resto.push(s);
+  }
+  // Las que no están en el horario: próximamente o terminadas (según la serie)
+  const estados = await Promise.all(resto.map((s) => apiC('serie', { slug: s.slug }).then((x) => x.status).catch(() => '')));
+  const proximas = resto.filter((_, i) => estados[i] === 'Próximamente');
+  const terminadas = resto.filter((_, i) => estados[i] !== 'Próximamente');
+  const grupo = (titulo, items, clase = '') => `<div class="grupo ${clase}"><div class="llave"><span>${esc(titulo)}</span></div>
+    <div class="grupo-items">${items.join('')}</div></div>`;
+  const grupos = [];
+  for (let i = 0; i < 7; i++) {
+    const dia = (hoy + i) % 7;
+    const items = porDia[dia].sort((a, b) => (a.f.getHours() * 60 + a.f.getMinutes()) - (b.f.getHours() * 60 + b.f.getMinutes()));
+    if (!items.length) continue;
+    const nombre = i === 0 ? `Hoy · ${DIAS[dia]}` : i === 1 ? `Mañana · ${DIAS[dia]}` : DIAS[dia];
+    grupos.push(grupo(nombre, items.map((s) => {
+      const nuevo = s.ep != null && !(estado.vistos[s.slug] || []).includes(s.ep);
+      return tPortada(s, { insignia: s.ep != null ? `Ep ${s.ep}${nuevo ? ' · nuevo' : ''}` : '' });
+    }), i === 0 ? 'hoy' : ''));
+  }
+  if (proximas.length) grupos.push(grupo('Próximamente', proximas.map((s) => tPortada(s)), 'aparte'));
+  if (terminadas.length) grupos.push(grupo('Ya no se emiten', terminadas.sort((a, b) => b.fecha - a.fecha).map((s) => tPortada(s)), 'aparte'));
+  const enEmision = porDia.reduce((n, d) => n + d.length, 0);
+  return { html: grupos.join(''), extra: `<small>${enEmision} en emisión · ${resto.length} aparte</small>` };
+}
+
 async function pLista(pant) {
-  const lista = Object.entries(estado.lista).sort((a, b) => b[1].fecha - a[1].fecha);
   const sv = seguirViendo();
-  pant.innerHTML = `<section class="fila"><h2>Mi lista</h2><div class="grilla" data-fila="lista" data-grilla>
-      ${lista.map(([slug, v]) => tPortada({ slug, id: v.id, title: v.title })).join('')
-      || '<div class="vacio">Todavía no agregaste nada. En una serie, «+ Mi lista».</div>'}</div></section>
+  const ml = await miListaPorDia();
+  pant.innerHTML = `${ml ? fila('lista', 'Mi lista', ml.html, ml.extra)
+      : '<section class="fila"><h2>Mi lista</h2><div class="vacio">Todavía no agregaste nada. Mantené OK sobre una serie y elegí «+ Agregar a mi lista».</div></section>'}
     ${sv.length ? `<section class="fila"><h2>Seguir viendo</h2><div class="grilla ancha" data-fila="sv" data-grilla>
       ${sv.map(([slug, v]) => tEpisodio({ slug, id: v.id, title: v.title }, v.ep, { k: `sv:${slug}`, progreso: v.d ? v.t / v.d : 0 })).join('')}</div></section>` : ''}`;
 }
@@ -652,10 +692,9 @@ function pintarControles() {
   const eps = s ? s.episodes : [];
   const i = eps.indexOf(v.ep);
   $('#c-titulo').textContent = s ? `${s.title} — Episodio ${v.ep}` : `Episodio ${v.ep}`;
-  $('#c-ayuda').textContent = '←/→: 10 s · OK: pausa · ↑ o Atrás: cerrar este panel';
-  const b = [];
+  $('#c-ayuda').textContent = 'Con el panel cerrado: ←/→ 10 s · OK pausa · ↑ o Atrás: cerrar este panel';
+  const b = ['<button class="boton principal" data-f data-inicial data-accion="a-serie">☰ Episodios</button>'];
   if (i > 0) b.push(`<button class="boton" data-f data-accion="ep" data-n="${eps[i - 1]}">⏮ Ep ${eps[i - 1]}</button>`);
-  b.push('<button class="boton principal" data-f data-inicial data-accion="pausa">⏯ Pausa</button>');
   if (i >= 0 && i < eps.length - 1) b.push(`<button class="boton" data-f data-accion="ep" data-n="${eps[i + 1]}">Ep ${eps[i + 1]} ⏭</button>`);
   if (v.embeds) {
     const audios = Object.keys(v.embeds).filter((k) => v.embeds[k].length);
@@ -664,7 +703,6 @@ function pintarControles() {
     b.push('<span class="sep"></span>' + (v.embeds[v.audio] || []).map((x, j) =>
       `<button class="boton ${x.server === v.servidor ? 'activo' : ''}" data-f data-accion="srv" data-j="${j}">${esc(x.server)}</button>`).join(''));
   }
-  b.push('<span class="sep"></span><button class="boton" data-f data-accion="a-serie">Episodios</button>');
   $('#c-botones').innerHTML = b.join('');
 }
 
@@ -702,7 +740,6 @@ function hacerVideo(acc, el) {
   if (acc === 'siguiente-ya') { siguienteYa(); return {}; }
   if (acc === 'cancelar-siguiente') { cancelarSiguiente(); return {}; }
   if (!v) return {};
-  if (acc === 'pausa') { cerrarControles(); return { media: 'play' }; }
   if (acc === 'ep') { history.replaceState(null, '', `#/ver/${encodeURIComponent(v.slug)}/${el.dataset.n}`); render(); return {}; }
   if (acc === 'a-serie') { irDeVideoASerie(); return {}; }
   if (acc === 'audio-ep') {
@@ -772,7 +809,9 @@ function refrescar(quitada) {
   const el = menuDe && menuDe.el;
   let k = el && el.dataset.k, fila = el && filaDe(el) && filaDe(el).dataset.fila;
   if (quitada && el) {
-    const vecino = [el.nextElementSibling, el.previousElementSibling].find((x) => x && x.hasAttribute('data-f'));
+    const todos = filaDe(el) ? [...filaDe(el).querySelectorAll('[data-f]')] : [];
+    const i = todos.indexOf(el);
+    const vecino = todos[i + 1] || todos[i - 1];
     if (vecino) k = vecino.dataset.k;
     else { k = null; fila = null; }
   }
