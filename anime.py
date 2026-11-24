@@ -193,6 +193,51 @@ def guardar(q):
         return {"ok": True, "estado": e}
 
 
+# ---------- Diagnóstico de trabadas (temporal) ----------
+DIAG = Path(__file__).resolve().parent / "anime-diag.log"
+
+
+def _sistema():
+    """Temperatura, carga, frecuencia, baja de velocidad y señal WiFi, para el registro."""
+    def leer(ruta):
+        try:
+            return Path(ruta).read_text().strip()
+        except OSError:
+            return ""
+    temp = leer("/sys/class/thermal/thermal_zone0/temp")
+    wifi = ""
+    for linea in leer("/proc/net/wireless").splitlines()[2:]:
+        partes = linea.split()
+        if len(partes) > 3:
+            wifi = f"{partes[0]} calidad {partes[2].rstrip('.')} señal {partes[3].rstrip('.')} dBm"
+    try:
+        import subprocess
+        thr = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=2).stdout.strip()
+    except Exception:
+        thr = ""
+    return (f"temp {int(temp) / 1000:.1f}°C · carga {' '.join(leer('/proc/loadavg').split()[:3])} · "
+            f"cpu {int(leer('/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq') or 0) // 1000} MHz · {thr} · {wifi}")
+
+
+def diag(q):
+    try:
+        d = json.loads(q.get("d", "{}"))
+    except ValueError:
+        d = {}
+    ev = d.pop("ev", "?")
+    sys_ = d.pop("sys", None)
+    vt = d.pop("vt", None)
+    hora = time.strftime("%H:%M:%S")
+    minuto = f"{int(vt // 60)}:{int(vt % 60):02d}" if isinstance(vt, (int, float)) else "-"
+    extra = " ".join(f"{k}={v}" for k, v in d.items())
+    linea = f"{hora} [{q.get('ep', '')}] video {minuto:>6} {ev:<15} {extra}"
+    if sys_:
+        linea += " | " + _sistema()
+    with _lock, DIAG.open("a") as f:
+        f.write(linea + "\n")
+    return {"ok": True}
+
+
 def api(ruta, query):
     """Atiende /anime/api/<ruta>. Devuelve (código HTTP, objeto para JSON)."""
     q = {k: v[0] for k, v in urllib.parse.parse_qs(query).items()}
@@ -212,6 +257,8 @@ def api(ruta, query):
                 return 200, _leer()
         if ruta == "guardar":
             return 200, guardar(q)
+        if ruta == "log":
+            return 200, diag(q)
         return 404, {"error": "no existe"}
     except urllib.error.HTTPError as ex:
         return (404 if ex.code == 404 else 502), {"error": f"animeav1 respondió {ex.code}"}

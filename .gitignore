@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 anime.json
 anime.tmp
+anime-diag.log

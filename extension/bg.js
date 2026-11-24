@@ -7,6 +7,13 @@ chrome.runtime.onMessage.addListener((m, sender) => {
     if (sender.tab) chrome.tabs.sendMessage(sender.tab.id, { vprog: m.vprog }, { frameId: 0 }).catch(() => {});
     return;
   }
+  if (m && m.vlog) { // diagnóstico de trabadas: al servidor, con el episodio de la pestaña
+    const url = (sender.tab && sender.tab.url) || '';
+    const ep = (url.match(/#\/ver\/([^/?]+)\/([^/?]+)/) || []).slice(1).join(' ');
+    const q = new URLSearchParams({ ep, d: JSON.stringify(m.vlog) });
+    fetch('http://127.0.0.1:8080/anime/api/log?' + q).catch(() => {});
+    return;
+  }
   if (m && 'seekTo' in m) { // modo anime: seguir desde donde había quedado
     if (sender.tab) seekToTime(sender.tab.id, +m.seekTo).catch(() => {});
     return;
