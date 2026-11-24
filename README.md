@@ -119,6 +119,9 @@ los accesos rápidos cambian a **Mi lista**, **Horario** y **Catálogo**.
   mano se recuerda). Episodios siempre lleva a la página de la serie (Atrás, en cambio, vuelve a
   donde se estaba). Al terminar un episodio pasa solo al siguiente en 10 s.
   Al volver a un episodio sigue desde donde quedó.
+- **Visto = solo falta el ending:** un episodio cuenta como terminado (✓) si le quedan 2½ minutos o
+  menos (en los de menos de 15 minutos, el último 10 %). En «Seguir viendo» aparece entonces el
+  episodio siguiente, desde el principio; si todavía no salió, la serie no aparece.
 - **Cómo funciona:** `anime.py` lee los datos de animeav1 (`/<página>/__data.json` de SvelteKit) y
   los entrega simplificados en `/anime/api/...`; también guarda mi lista, seguir viendo, vistos y
   preferencias en `anime.json`. La página tiene `<html data-pitv-app>`: con eso `tv.js` no la

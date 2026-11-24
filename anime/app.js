@@ -335,21 +335,41 @@ function fila(id, titulo, html, extra = '') {
   return html ? `<section class="fila"><h2>${titulo}${extra}</h2><div class="fila-items" data-fila="${id}">${html}</div></section>` : '';
 }
 
+// Un episodio está visto si solo falta el ending: 2½ minutos o menos (en los episodios cortos,
+// de menos de 15 minutos, el último 10 %)
+const FINAL = 150;
+function terminado(t, d) {
+  return d > 0 && d - t <= (d >= 900 ? FINAL : d * 0.1);
+}
+
 // Lo que conviene ver de una serie: el episodio a medias o el siguiente al último visto
 function proximo(slug, episodios) {
   const v = estado.viendo[slug];
   if (!v) return null;
-  const terminado = v.d > 0 && (v.d - v.t < 120 || v.t / v.d > 0.9);
-  if (!terminado) return { ep: v.ep, t: v.t, d: v.d };
+  if (!terminado(v.t, v.d)) return { ep: v.ep, t: v.t, d: v.d };
   if (episodios) {
     const sig = episodios.find((n) => n > v.ep);
     return sig !== undefined ? { ep: sig, t: 0, d: 0 } : null;
   }
   return { ep: v.ep, t: v.t, d: v.d, terminado: true };
 }
-function seguirViendo() {
-  return Object.entries(estado.viendo).sort((a, b) => b[1].fecha - a[1].fecha).slice(0, 20);
+// «Seguir viendo»: el episodio a medias o, si ya se terminó (solo quedaba el ending), el siguiente
+// desde el principio. Si no hay siguiente todavía (al día), la serie no aparece.
+async function seguirViendo() {
+  const items = Object.entries(estado.viendo).sort((a, b) => b[1].fecha - a[1].fecha).slice(0, 20);
+  const out = await Promise.all(items.map(async ([slug, v]) => {
+    const s = { slug, id: v.id, title: v.title };
+    if (!terminado(v.t, v.d)) return { s, ep: v.ep, t: v.t, d: v.d };
+    const serie = await apiC('serie', { slug }).catch(() => null);
+    const sig = serie && serie.episodes.find((n) => n > v.ep);
+    return sig !== undefined && serie ? { s, ep: sig, t: 0, d: 0, siguiente: true } : null;
+  }));
+  return out.filter(Boolean);
 }
+const tSeguir = (x) => tEpisodio(x.s, x.ep, {
+  k: `sv:${x.s.slug}`, titulo: x.s.title, progreso: x.d ? x.t / x.d : 0,
+  sub: x.siguiente ? 'Siguiente episodio' : x.t ? `Quedó en ${mmss(x.t)}` : '',
+});
 
 // ---------- Páginas ----------
 async function pInicio(pant) {
@@ -366,14 +386,7 @@ async function pInicio(pant) {
         <button class="boton ${enLista ? 'marcado' : ''}" data-f data-k="h:lista" data-accion="lista" data-slug="${esc(dest.slug)}" data-id="${dest.id}" data-title="${esc(dest.title)}">${enLista ? '✓ En mi lista' : '+ Mi lista'}</button>
       </div></section>`;
   }
-  const sv = seguirViendo().map(([slug, v]) => {
-    const s = { slug, id: v.id, title: v.title };
-    const p = v.d ? v.t / v.d : 0;
-    const fin = v.d > 0 && (v.d - v.t < 120 || p > 0.9);
-    // Episodio terminado: a la serie (ahí está el botón del siguiente)
-    return tEpisodio(s, v.ep, { k: `sv:${slug}`, titulo: v.title, sub: fin ? 'Terminado · ver el siguiente' : v.t ? `Quedó en ${mmss(v.t)}` : '',
-      progreso: p, ir: fin ? `#/serie/${slug}` : undefined });
-  }).join('');
+  const sv = (await seguirViendo()).map(tSeguir).join('');
   html += fila('seguir', 'Seguir viendo', sv);
   html += fila('ultimos', 'Últimos episodios', d.episodios.map((e) => tEpisodio(e, e.ep, {
     k: `u:${e.slug}:${e.ep}`, visto: (estado.vistos[e.slug] || []).includes(e.ep),
@@ -563,12 +576,11 @@ async function miListaPorDia() {
 }
 
 async function pLista(pant) {
-  const sv = seguirViendo();
-  const ml = await miListaPorDia();
+  const [sv, ml] = await Promise.all([seguirViendo(), miListaPorDia()]);
   pant.innerHTML = `${ml ? fila('lista', 'Mi lista', ml.html, ml.extra)
       : '<section class="fila"><h2>Mi lista</h2><div class="vacio">Todavía no agregaste nada. Mantené OK sobre una serie y elegí «+ Agregar a mi lista».</div></section>'}
     ${sv.length ? `<section class="fila"><h2>Seguir viendo</h2><div class="grilla ancha" data-fila="sv" data-grilla>
-      ${sv.map(([slug, v]) => tEpisodio({ slug, id: v.id, title: v.title }, v.ep, { k: `sv:${slug}`, progreso: v.d ? v.t / v.d : 0 })).join('')}</div></section>` : ''}`;
+      ${sv.map(tSeguir).join('')}</div></section>` : ''}`;
 }
 
 // ---------- Botones ----------
@@ -643,7 +655,7 @@ async function ver(slug, n) {
     v.audio = audios.includes(estado.audio) ? estado.audio : audios[0];
     if (v.audio !== estado.audio) toast(`Sin ${estado.audio}: ${v.audio === 'DUB' ? 'doblado' : 'subtitulado'}`);
     const guardado = estado.viendo[slug];
-    v.desde = guardado && guardado.ep === ep && guardado.t > 20 && (!guardado.d || guardado.d - guardado.t > 90) ? guardado.t : 0;
+    v.desde = guardado && guardado.ep === ep && guardado.t > 20 && !terminado(guardado.t, guardado.d) ? guardado.t : 0;
     cargarServidor(elegirServidor(epi.embeds[v.audio], estado.servidor));
     // Que figure en «seguir viendo» aunque no llegue el progreso
     guardar({ accion: 'progreso', slug, id: serie.id, title: serie.title, ep, t: v.desde, d: guardado && guardado.ep === ep ? guardado.d : 0 });
@@ -874,7 +886,7 @@ function progresoVideo(p) {
     }
   }
   if (p.d > 0) v.ultimo = { t: p.t, d: p.d };
-  if (!v.visto && p.d > 0 && (p.d - p.t < 100 || p.t / p.d > 0.92)) {
+  if (!v.visto && terminado(p.t, p.d)) {
     v.visto = true;
     guardar({ accion: 'visto', slug: v.slug, ep: v.ep });
   }
