@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pi Remote - teclado",
-  "version": "1.4",
+  "version": "1.5",
   "description": "Avisa al control remoto cuando se enfoca un campo de texto, adelanta el video de la pestaña activa, permite navegar YouTube con la cruceta (modo tele) y maneja el modo anime.",
   "background": {
     "service_worker": "bg.js"
@@ -25,6 +25,17 @@
         "tv.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://player.zilla-networks.com/*"
+      ],
+      "js": [
+        "zilla.js"
+      ],
+      "world": "MAIN",
+      "all_frames": true,
+      "run_at": "document_start"
     }
   ],
   "permissions": [

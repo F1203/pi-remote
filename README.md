@@ -129,4 +129,9 @@ los accesos rápidos cambian a **Mi lista**, **Horario** y **Catálogo**.
   (`{media}`, `{winFull}`, `{editable}`). El reproductor de otro dominio avisa cómo va el video
   desde `content.js` (`vprog`, vía `bg.js`). El servidor HLS solo se deja abrir desde animeav1:
   `extension/rules.json` le pone ese `Referer` cuando lo abre esta página.
+- **Trabadas cortas en HLS (resuelto):** el reproductor (JW Player) arrancaba con `preload: metadata`
+  y así hls.js guarda solo 1 s de margen: cada segmento se pedía al final y uno lento trababa el
+  video. `extension/zilla.js` (en el iframe del reproductor, mundo MAIN) le pone `preload: auto`:
+  margen de ~25 s. Para diagnosticar quedó un registro temporal en `anime-diag.log`
+  (esperas, cuadros perdidos, tiempos de cada segmento, estado de la Pi cada 30 s).
 - Sin extensión también se maneja con un teclado (flechas, Enter, Escape).
