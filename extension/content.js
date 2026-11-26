@@ -58,8 +58,10 @@ if (window === top && /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(location.href))
   if (YT) {
     let avisado = false;
     setInterval(() => {
-      const e = document.querySelector('.ytp-error');
+      // La pantalla de error nueva («Este video no está disponible» + «Mirar en YouTube») y la vieja
+      const e = document.querySelector('yt-interstitial-view-model, .playerInterstitialRendererScrim, .ytp-error');
       if (avisado || !e || !e.getClientRects().length) return;
+      if ([...document.querySelectorAll('video')].some((v) => !v.paused && v.currentTime > 0)) return;
       avisado = true;
       try { chrome.runtime.sendMessage({ vprog: { error: (e.innerText || '').trim().split('\n')[0].slice(0, 160) } }); } catch {}
     }, 1000);

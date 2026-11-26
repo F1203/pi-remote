@@ -153,8 +153,9 @@ modo anime (misma cruceta, mantener OK = opciones, misma base de estilos `../ani
   pausa, la ruedita del celular adelanta. ↓ abre el panel: **canal** (elegido de entrada),
   anterior/siguiente (de la fila desde la que se abrió el video; si no, el primer relacionado),
   subtítulos, ★ canal favorito, abrir en YouTube y una fila de **relacionados**. Al terminar de
-  verdad (`ended`) pasa al siguiente en 10 s. Si el video no se deja ver fuera de YouTube, se abre
-  solo en youtube.com.
+  verdad (`ended`) pasa al siguiente en 10 s. Si el video no se deja ver fuera de YouTube (lo dice su
+  página, `playableInEmbed`, o aparece la pantalla «no está disponible» del reproductor), se abre
+  solo en youtube.com, en el mismo segundo.
 - **Seguir viendo:** desde los 30 s de video; sigue 3 s antes de donde quedó. Un video está visto
   si le falta el 5 % (entre 15 s y 1 min: la pantalla final) y sale de la lista.
 - **Cómo funciona:** la página le pide a la extensión cada página de YouTube (`{ytFetch}` → `tv.js`

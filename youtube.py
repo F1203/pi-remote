@@ -40,7 +40,7 @@ def pagina(ruta):
                                                "Cookie": "CONSENT=YES+1"})
     with urllib.request.urlopen(req, timeout=15) as r:
         html = r.read().decode("utf-8", "replace")
-    datos = {"data": extraer(html), "logueado": False}
+    datos = {"data": extraer(html), "logueado": False, "embed": '"playableInEmbed":false' not in html}
     _cache[url] = (ahora + 600, datos)
     if len(_cache) > 100:
         for k in sorted(_cache, key=lambda k: _cache[k][0])[:40]:

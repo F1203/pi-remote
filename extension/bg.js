@@ -14,7 +14,8 @@ async function ytPage(path) {
   const i = html.indexOf(marca);
   const f = i >= 0 ? html.indexOf(';</script>', i) : -1;
   if (f < 0) throw new Error('La página de YouTube no trae datos');
-  return { ok: true, data: JSON.parse(html.slice(i + marca.length, f)), logueado: /"LOGGED_IN":true/.test(html) };
+  return { ok: true, data: JSON.parse(html.slice(i + marca.length, f)), logueado: /"LOGGED_IN":true/.test(html),
+    embed: !/"playableInEmbed":false/.test(html) }; // si el video se deja ver fuera de YouTube
 }
 
 chrome.runtime.onMessage.addListener((m, sender, sendResponse) => {

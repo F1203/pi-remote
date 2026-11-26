@@ -35,6 +35,7 @@ let sinSesion = false; // la extensión respondió, pero YouTube no ve la sesió
 const esperando = new Map();
 let pedidoId = 0;
 const cacheYt = new Map(); // ruta -> {vence, promesa}
+const noEmbebibles = new Set(); // páginas /watch de videos que YouTube no deja ver fuera de su sitio
 function pedirExt(ruta) {
   return new Promise((ok, no) => {
     const id = ++pedidoId;
@@ -52,6 +53,7 @@ function yt(ruta, dura = 300000) {
       sinSesion = !r.logueado;
       if (sinSesion && !avisoSesion) { avisoSesion = true; api('log', { m: 'la extensión no ve la sesión de YouTube' }).catch(() => {}); }
     }
+    if (r.embed === false) noEmbebibles.add(ruta);
     return r.data;
   });
   cacheYt.set(ruta, { vence: Date.now() + dura, promesa });
@@ -653,6 +655,7 @@ function ver(id, t = 0) {
   // Título, canal y relacionados (de la página del video)
   yt('/watch?v=' + encodeURIComponent(id), 600000).then((d) => {
     if (viendo !== v) return;
+    if (noEmbebibles.has('/watch?v=' + encodeURIComponent(id))) { progresoVideo({ error: 'no embebible' }); return; }
     const res = (d.contents && d.contents.twoColumnWatchNextResults) || {};
     const prim = buscar(res.results, (x) => x.videoPrimaryInfoRenderer);
     const dueño = buscar(res.results, (x) => x.videoOwnerRenderer);
@@ -833,7 +836,9 @@ function progresoVideo(p) {
     v.error = true;
     $('#cargando').style.display = '';
     $('#cargando').textContent = 'Este video no se puede ver acá: se abre en YouTube…';
-    setTimeout(() => { if (viendo === v) enYouTube(v.id, v.desde); }, 2500);
+    $('#reproductor').querySelectorAll('iframe').forEach((f) => { f.style.visibility = 'hidden'; });
+    guardarProgreso();
+    setTimeout(() => { if (viendo === v) enYouTube(v.id, v.ultimo ? v.ultimo.t : v.desde); }, 1500);
     return;
   }
   if (p.d > 0 && p.t > 0 && !p.paused && !v.arranco) { v.arranco = true; $('#cargando').style.display = 'none'; }
