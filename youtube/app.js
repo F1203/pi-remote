@@ -115,8 +115,9 @@ function deLockup(lv) {
   const pct = buscar(lv.contentImage, (x) => (x.thumbnailOverlayProgressBarViewModel ? x.thumbnailOverlayProgressBarViewModel.startPercent : undefined));
   const avatar = buscar(md.image, (x) => (x.avatarViewModel ? buscar(x.avatarViewModel, (y) => (y.sources ? y.sources[0].url : undefined)) : undefined));
   return {
-    id: lv.contentId, title: texto(md.title), canal: (partes[0] || [])[0] || '', canalId: idCanal(md) || '',
-    dur: vivo ? 'EN VIVO' : dur, vivo, meta: partes.slice(1).flat().join(' · '),
+    // En la página de un canal hay un solo renglón (vistas · fecha): no repite el nombre del canal
+    id: lv.contentId, title: texto(md.title), canal: partes.length > 1 ? (partes[0][0] || '') : '', canalId: idCanal(md) || '',
+    dur: vivo ? 'EN VIVO' : dur, vivo, meta: (partes.length > 1 ? partes.slice(1) : partes).flat().join(' · '),
     avatar: urlImg(avatar), visto: pct ? pct / 100 : 0,
   };
 }
@@ -453,9 +454,50 @@ function tCanal(c, { k } = {}) {
 function fila(id, titulo, html, extra = '') {
   return html ? `<section class="fila"><h2>${titulo}${extra}</h2><div class="fila-items" data-fila="${id}">${html}</div></section>` : '';
 }
-function grilla(id, titulo, html, vacio, clase = 'videos') {
-  return `<section class="fila"><h2>${titulo}</h2><div class="grilla ${clase}" data-fila="${id}" data-grilla>${html || `<div class="vacio">${vacio}</div>`}</div></section>`;
+function grilla(id, titulo, html, vacio, clase = 'videos', mas = '') {
+  return `<section class="fila"><h2>${titulo}</h2><div class="grilla ${clase}" data-fila="${id}" data-grilla ${mas}>${html || `<div class="vacio">${vacio}</div>`}</div></section>`;
 }
+
+// ---------- Más videos al llegar al final de una grilla (canal, búsqueda) ----------
+// YouTube manda los videos de a tandas: al final de cada una hay un «continuationItemRenderer» con
+// la clave de la tanda siguiente. La pide el servidor (/youtube/api/mas).
+function continuacion(o) {
+  let token = null;
+  const rec = (x, prof) => {
+    if (!x || typeof x !== 'object' || prof > 40) return;
+    if (Array.isArray(x)) { for (const y of x) rec(y, prof + 1); return; }
+    if (x.continuationItemRenderer) {
+      const t = buscar(x.continuationItemRenderer, (y) => (y.continuationCommand ? y.continuationCommand.token : undefined));
+      if (t) token = t; // la última de la lista principal
+      return;
+    }
+    for (const k in x) if (!NO.has(k)) rec(x[k], prof + 1);
+  };
+  rec(o, 0);
+  return token;
+}
+const attrMas = (token, tipo, sub = '') => (token ? `data-mas="${esc(token)}" data-tipo="${tipo}" data-subtipo="${sub}"` : '');
+let trayendo = false;
+async function traerMas(g) {
+  if (trayendo || !g.dataset.mas) return;
+  trayendo = true;
+  const hash = location.hash;
+  try {
+    const r = await api('mas', { token: g.dataset.mas, tipo: g.dataset.tipo });
+    if (location.hash !== hash || !g.isConnected) return;
+    const ya = new Set([...g.querySelectorAll('[data-vid]')].map((x) => x.dataset.vid));
+    const nuevos = contenido(r.data).videos.filter((v) => !ya.has(v.id));
+    const sig = continuacion(r.data);
+    if (sig && sig !== g.dataset.mas && nuevos.length) g.dataset.mas = sig; else delete g.dataset.mas;
+    g.insertAdjacentHTML('beforeend', nuevos.map((v) => tVideo(v, g.dataset.subtipo === 'meta' ? { sub: v.meta } : {})).join(''));
+  } catch { toast('No se pudieron traer más videos'); } finally { trayendo = false; }
+}
+setInterval(() => {
+  const g = foco && foco.isConnected && foco.closest('.grilla[data-mas]');
+  if (!g || viendo) return;
+  const items = [...g.children];
+  if (items.indexOf(foco) > items.length - 12) traerMas(g);
+}, 600);
 const avisoSesion2 = () => (sinSesion ? '<div class="aviso-sesion">YouTube no ve tu sesión: iniciá sesión en youtube.com en Brave para ver tus suscripciones, recomendados e historial.</div>' : '');
 
 // La cola: al abrir un video desde una fila, «siguiente» y «anterior» son los de esa fila
@@ -558,7 +600,8 @@ async function pCanal(pant, r) {
       <div class="botones" data-fila="acciones">
         <button class="boton ${fav ? 'marcado' : ''}" data-f data-k="a:fav" data-accion="fav" data-canal="${esc(id)}" data-nombre="${esc(nombre)}" data-avatar="${esc(avatar)}">${fav ? '★ Favorito' : '☆ Agregar a favoritos'}</button>
       </div></div></section>`
-    + grilla('vids', 'Videos', d.videos.map((v) => tVideo(v, { sub: v.meta })).join(''), 'Este canal no tiene videos.');
+    + grilla('vids', 'Videos', d.videos.map((v) => tVideo(v, { sub: v.meta })).join(''), 'Este canal no tiene videos.', 'videos',
+      attrMas(continuacion(data.contents || data), 'browse', 'meta'));
   const primero = $('#pantalla .grilla .tarjeta');
   if (primero) primero.setAttribute('data-inicial', '');
 }
@@ -587,10 +630,12 @@ async function buscarYa() {
   if (!t) { res.innerHTML = ''; return; }
   res.innerHTML = '<div class="vacio">Buscando…</div>';
   try {
-    const d = contenido(await yt('/results?search_query=' + encodeURIComponent(t)));
+    const data = await yt('/results?search_query=' + encodeURIComponent(t));
+    const d = contenido(data);
     if (ultimaBusqueda !== t || !$('#res')) return;
     res.innerHTML = fila('rcan', 'Canales', d.canales.map((c) => tCanal(c)).join(''))
-      + grilla('res', d.videos.length ? 'Videos' : 'Sin resultados', d.videos.map((v) => tVideo(v)).join(''), '');
+      + grilla('res', d.videos.length ? 'Videos' : 'Sin resultados', d.videos.map((v) => tVideo(v)).join(''), '', 'videos',
+        attrMas(continuacion(data.contents || data), 'search'));
   } catch (e) { if ($('#res')) res.innerHTML = `<div class="vacio">${esc(e.message)}</div>`; }
 }
 

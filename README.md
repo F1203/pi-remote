@@ -147,7 +147,9 @@ modo anime (misma cruceta, mantener OK = opciones, misma base de estilos `../ani
 - **Inicio:** *Seguir viendo*, últimos videos de las suscripciones, una fila por cada **canal
   favorito** y los recomendados. También: **Suscripciones**, **Canales** (favoritos y todos los
   canales a los que estás suscrito), **Historial**, **Ver más tarde** y **Buscar** (canales y videos).
-  Sin Shorts. Solo se ve la primera tanda de cada lista (lo que trae la página de YouTube).
+  Sin Shorts. En un **canal** y en **Buscar**, al acercarse al final de la grilla se traen 30 más (el
+  servidor pide la continuación a `youtubei/v1`, sin sesión); las listas personales (suscripciones,
+  historial, ver más tarde) muestran solo la primera tanda.
 - **Opciones:** ir al canal, ★ canal favorito / quitarlo, quitar de «Seguir viendo», abrir en YouTube.
 - **Reproductor propio** (`youtube.com/embed`, a pantalla completa, con play solo): ←/→ ±10 s, OK
   pausa, la ruedita del celular adelanta. ↓ abre el panel: **canal** (elegido de entrada),

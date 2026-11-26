@@ -6,6 +6,7 @@ pide /youtube/api/pagina y el servidor la baja sin sesión: sirve para buscar y 
 """
 
 import json
+import re
 import logging
 import threading
 import time
@@ -40,12 +41,42 @@ def pagina(ruta):
                                                "Cookie": "CONSENT=YES+1"})
     with urllib.request.urlopen(req, timeout=15) as r:
         html = r.read().decode("utf-8", "replace")
+    m = re.search(r'"INNERTUBE_CLIENT_VERSION":"([^"]+)"', html)
+    if m:
+        _version["v"] = m.group(1)
     datos = {"data": extraer(html), "logueado": False, "embed": '"playableInEmbed":false' not in html}
     _cache[url] = (ahora + 600, datos)
     if len(_cache) > 100:
         for k in sorted(_cache, key=lambda k: _cache[k][0])[:40]:
             _cache.pop(k, None)
     return datos
+
+
+_version = {"v": ""}  # versión del cliente web de YouTube (la piden las continuaciones)
+
+
+def _cliente():
+    if not _version["v"]:
+        req = urllib.request.Request("https://www.youtube.com/", headers={"User-Agent": UA, "Cookie": "CONSENT=YES+1"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            html = r.read().decode("utf-8", "replace")
+        m = re.search(r'"INNERTUBE_CLIENT_VERSION":"([^"]+)"', html)
+        _version["v"] = m.group(1) if m else "2.20251120.01.00"
+    return _version["v"]
+
+
+def mas(token, tipo):
+    """La tanda siguiente de una lista (lo que YouTube pide al llegar al final): videos de un canal o
+    resultados de una búsqueda. Sin sesión: las listas personales (suscripciones…) no tienen más."""
+    if not token or len(token) > 30000:
+        raise ValueError("continuación inválida")
+    url = "https://www.youtube.com/youtubei/v1/" + ("search" if tipo == "search" else "browse") + "?prettyPrint=false"
+    cuerpo = {"context": {"client": {"clientName": "WEB", "clientVersion": _cliente(), "hl": "es-419", "gl": "UY"}},
+              "continuation": token}
+    req = urllib.request.Request(url, data=json.dumps(cuerpo).encode(), method="POST",
+                                 headers={"User-Agent": UA, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return {"data": json.load(r)}
 
 
 # ---------- Estado ----------
@@ -103,6 +134,8 @@ def api(ruta, query):
             return 200, guardar(q)
         if ruta == "pagina":
             return 200, pagina(q["p"])
+        if ruta == "mas":
+            return 200, mas(q.get("token", ""), q.get("tipo", ""))
         if ruta == "log":  # la página avisa si la extensión ve la sesión (para el registro del servicio)
             logging.info("youtube: %s", q.get("m", "")[:200])
             return 200, {"ok": True}
