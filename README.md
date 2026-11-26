@@ -163,3 +163,5 @@ modo anime (misma cruceta, mantener OK = opciones, misma base de estilos `../ani
   extensión (otro navegador), el servidor baja las páginas sin sesión (`/youtube/api/pagina`):
   alcanza para buscar y ver canales. Si YouTube no ve la sesión, la página lo avisa y el servidor
   lo anota en su registro.
+- **Puntero:** en las pantallas de anime y YouTube (y dentro de sus reproductores) se esconde solo a
+  los 2,5 s sin moverse (`content.js`); vuelve al mover el trackpad.

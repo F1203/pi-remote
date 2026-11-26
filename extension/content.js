@@ -113,3 +113,25 @@ if (window === top && /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(location.href))
     }).observe({ type: 'resource', buffered: true });
   } catch {}
 })();
+
+// Modos anime y YouTube (páginas del servidor y sus reproductores): el puntero se esconde solo a
+// los 2,5 s sin moverse, como en una tele (el reproductor de YouTube embebido no lo esconde).
+(() => {
+  const APP = /^https?:\/\/[^/]+:8080\/(anime|youtube)(\/|$)/;
+  const anc = [...(location.ancestorOrigins || [])];
+  const enApp = window === top ? APP.test(location.href) : anc.length && /^https?:\/\/[^/]+:8080$/.test(anc[anc.length - 1]);
+  if (!enApp) return;
+  const css = document.createElement('style');
+  css.textContent = 'html.__pi_sin_puntero, html.__pi_sin_puntero * { cursor: none !important; }';
+  (document.head || document.documentElement).appendChild(css);
+  let t = 0, x = -1, y = -1;
+  const esconder = () => document.documentElement.classList.add('__pi_sin_puntero');
+  const mover = (ev) => {
+    if (ev.screenX === x && ev.screenY === y) return; // el navegador repite el último lugar al redibujar
+    x = ev.screenX; y = ev.screenY;
+    document.documentElement.classList.remove('__pi_sin_puntero');
+    clearTimeout(t); t = setTimeout(esconder, 2500);
+  };
+  window.addEventListener('mousemove', mover, true);
+  t = setTimeout(esconder, 2500);
+})();

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pi Remote - teclado",
-  "version": "1.6",
+  "version": "1.7",
   "description": "Avisa al control remoto cuando se enfoca un campo de texto, adelanta el video de la pestaña activa, permite navegar YouTube con la cruceta (modo tele) y maneja los modos anime y YouTube.",
   "background": {
     "service_worker": "bg.js"
