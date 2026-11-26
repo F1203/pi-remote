@@ -75,10 +75,10 @@
   #vidpad .sec button svg { width:24px; height:24px; }
   body.kb #vidpad .opt { display:none; }
   /* Accesos rápidos según el sitio abierto en Brave (lo avisa la extensión) */
-  .site-yt, .site-anime, .site-app { display:none !important; }
+  .site-yt, .site-anime, .site-app, .site-ytapp { display:none !important; }
   body[data-site=youtube] .site-yt { display:block !important; }
-  body[data-site=animeav1] .site-anime, body[data-site=anime] .site-app { display:flex !important; }
-  body[data-site=anime] .no-app { display:none !important; }
+  body[data-site=animeav1] .site-anime, body[data-site=anime] .site-app, body[data-site=ytapp] .site-ytapp { display:flex !important; }
+  body[data-site=anime] .no-anime, body[data-site=ytapp] .no-ytapp { display:none !important; }
   #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
 </style>
 </head>
@@ -121,7 +121,13 @@
       <button data-nav="home" data-icon="home" title="Inicio de YouTube"> Inicio</button>
       <button data-nav="search" data-icon="search" title="Buscar en YouTube (abre el teclado)"> Buscar</button>
       <button data-nav="subs" data-icon="subs" class="site-yt" title="Suscripciones de YouTube"> Suscrip.</button>
-      <button data-nav="anime" data-icon="star" class="no-app" title="Modo anime: animeav1 como una app de tele (seguir viendo, mi lista)"> Anime</button>
+      <button data-nav="youtube" data-icon="tv" class="no-ytapp" title="Modo YouTube: tu YouTube como una app de tele (seguir viendo, canales favoritos)"> YouTube</button>
+      <button data-nav="anime" data-icon="star" class="no-anime" title="Modo anime: animeav1 como una app de tele (seguir viendo, mi lista)"> Anime</button>
+    </div>
+    <div class="row site-ytapp">
+      <button data-nav="subs" data-icon="subs" title="Suscripciones"> Suscrip.</button>
+      <button data-nav="canales" data-icon="star" title="Canales favoritos y suscripciones"> Canales</button>
+      <button data-nav="historial" data-icon="reload" title="Historial de YouTube"> Historial</button>
     </div>
     <div class="row site-app">
       <button data-nav="lista" data-icon="bookmark" title="Mi lista del modo anime"> Mi lista</button>

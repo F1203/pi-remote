@@ -227,16 +227,26 @@ function atras() {
   if (a && a.tagName === 'INPUT') { a.blur(); return {}; }
   if ($('#aviso').classList.contains('abierto')) { cancelarSiguiente(); return {}; }
   if (viendo && $('#controles').classList.contains('abierto')) { cerrarControles(); return {}; }
-  if (viendo) { if (haciaAtras) history.back(); else irDeVideoASerie(); return {}; }
+  if (viendo) { if (pasos()) volver(); else irDeVideoASerie(); return {}; }
   if (ruta().nombre === 'inicio') {
     // En el inicio: subir y, si ya está arriba, no hacer nada (para salir: botón YouTube)
     if (scrollY > 10 || (foco && filaDe(foco) && filaDe(foco).dataset.fila !== 'hero')) { scrollTo({ top: 0, behavior: 'smooth' }); enfocar(inicial()); }
     return {};
   }
-  if (history.length > 1 && haciaAtras) history.back(); else irA('#/');
+  if (pasos()) volver(); else irA('#/');
   return {};
 }
-let haciaAtras = false; // si se entró a alguna página desde esta app (si no, Atrás iría a otro sitio)
+// Cuántas páginas se abrieron dentro de la app desde la primera (va en el historial): Atrás solo
+// vuelve si hay a dónde; si no, se saldría de la app
+const pasos = () => (history.state && history.state.pasos) || 0;
+// Atrás en el historial, una vez por página (dos toques seguidos no se saltean la de antes)
+let volviendoDe = null;
+function volver() {
+  if (volviendoDe === location.href) return;
+  volviendoDe = location.href;
+  history.back();
+}
+window.addEventListener('popstate', () => { volviendoDe = null; });
 
 // Teclado de verdad (sin extensión, o al probar con un teclado)
 document.addEventListener('keydown', (ev) => {
@@ -277,8 +287,9 @@ function ruta() {
 }
 function irA(h) {
   if (location.hash === h || (h === '#/' && !location.hash)) { render(); return; }
-  haciaAtras = true;
+  const n = pasos() + 1;
   location.hash = h;
+  history.replaceState({ pasos: n }, '');
 }
 const memo = new Map(); // foco y scroll de cada página, para volver al mismo lugar
 let paginaActual = '';
@@ -523,7 +534,7 @@ async function buscarYa() {
   const t = inp.value.trim();
   if (t === ultimaBusqueda) return;
   ultimaBusqueda = t;
-  history.replaceState(null, '', '#/buscar' + (t ? '?q=' + encodeURIComponent(t) : ''));
+  history.replaceState(history.state, '', '#/buscar' + (t ? '?q=' + encodeURIComponent(t) : ''));
   paginaActual = location.hash;
   if (!t) { $('#res').innerHTML = ''; $('#r-titulo').textContent = ''; return; }
   $('#r-titulo').textContent = 'Buscando…';
@@ -587,7 +598,7 @@ async function pLista(pant) {
 function hacer(acc, el) {
   if (acc.startsWith('m-')) return hacerMenu(acc);
   if (acc === 'reintentar') { cache.clear(); render(); return {}; }
-  if (acc === 'youtube') { location.href = 'https://www.youtube.com/'; return {}; }
+  if (acc === 'youtube') { location.href = '../youtube/'; return {}; }
   if (acc === 'audio') {
     guardar({ accion: 'audio', v: estado.audio === 'SUB' ? 'DUB' : 'SUB' }).then(() => toast('Audio preferido: ' + (estado.audio === 'SUB' ? 'japonés con subtítulos' : 'doblado')));
     return {};
@@ -604,7 +615,7 @@ function hacer(acc, el) {
   if (acc === 'quitar') { guardar({ accion: 'quitar', slug: el.dataset.slug }).then(() => { toast('Quitado de «Seguir viendo»'); render(); }); return {}; }
   if (acc === 'bloque') {
     const r = ruta();
-    history.replaceState(null, '', `#/serie/${encodeURIComponent(r.p[1])}?b=${el.dataset.b}`);
+    history.replaceState(history.state, '', `#/serie/${encodeURIComponent(r.p[1])}?b=${el.dataset.b}`);
     memo.set(location.hash, { k: el.dataset.k, y: scrollY });
     paginaActual = '';
     render();
@@ -613,7 +624,7 @@ function hacer(acc, el) {
   if (acc === 'filtro') {
     const q = { ...ruta().q, [el.dataset.clave]: el.dataset.v };
     const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
-    history.replaceState(null, '', '#/catalogo' + (qs ? '?' + qs : ''));
+    history.replaceState(history.state, '', '#/catalogo' + (qs ? '?' + qs : ''));
     memo.set(location.hash, { k: el.dataset.k, y: scrollY });
     paginaActual = '';
     render();
@@ -752,7 +763,7 @@ function hacerVideo(acc, el) {
   if (acc === 'siguiente-ya') { siguienteYa(); return {}; }
   if (acc === 'cancelar-siguiente') { cancelarSiguiente(); return {}; }
   if (!v) return {};
-  if (acc === 'ep') { history.replaceState(null, '', `#/ver/${encodeURIComponent(v.slug)}/${el.dataset.n}`); render(); return {}; }
+  if (acc === 'ep') { history.replaceState(history.state, '', `#/ver/${encodeURIComponent(v.slug)}/${el.dataset.n}`); render(); return {}; }
   if (acc === 'a-serie') { irDeVideoASerie(); return {}; }
   if (acc === 'audio-ep') {
     v.audio = el.dataset.v;
@@ -774,7 +785,7 @@ function irDeVideoASerie() {
   const h = `#/serie/${encodeURIComponent(v.slug)}`;
   // Si se llegó desde esa misma serie, volver atrás (queda en el episodio elegido);
   // si no (seguir viendo, últimos, horario…), cambiar el video por la página de la serie
-  if (haciaAtras && vinoDe && vinoDe.split('?')[0] === h) history.back(); else location.replace(h);
+  if (pasos() && vinoDe && vinoDe.split('?')[0] === h) volver(); else { history.replaceState(history.state, '', h); render(); }
 }
 let vinoDe = ''; // página desde la que se abrió el episodio
 
@@ -925,7 +936,7 @@ function siguienteYa() {
   $('#aviso').classList.remove('abierto');
   const v = viendo;
   if (!v || v.siguiente === undefined) return;
-  history.replaceState(null, '', `#/ver/${encodeURIComponent(v.slug)}/${v.siguiente}`);
+  history.replaceState(history.state, '', `#/ver/${encodeURIComponent(v.slug)}/${v.siguiente}`);
   render();
 }
 function cancelarSiguiente() {

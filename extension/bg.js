@@ -1,14 +1,34 @@
-// Modo anime: la página que sirve el servidor del control remoto
+// Modo anime y modo YouTube: las páginas que sirve el servidor del control remoto
 const ANIME_URL = 'http://127.0.0.1:8080/anime/';
+const YTAPP_URL = 'http://127.0.0.1:8080/youtube/';
 const isAnime = (url) => /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(url || '');
+const isYtApp = (url) => /^https?:\/\/[^/]+:8080\/youtube(\/|$)/.test(url || '');
 
-chrome.runtime.onMessage.addListener((m, sender) => {
+// Modo YouTube: baja una página de YouTube con la sesión de Brave y devuelve su ytInitialData
+async function ytPage(path) {
+  if (!/^\/[^/]/.test(path)) throw new Error('ruta inválida');
+  const r = await fetch('https://www.youtube.com' + path, { credentials: 'include' });
+  if (!r.ok) throw new Error('YouTube respondió ' + r.status);
+  const html = await r.text();
+  const marca = 'var ytInitialData = ';
+  const i = html.indexOf(marca);
+  const f = i >= 0 ? html.indexOf(';</script>', i) : -1;
+  if (f < 0) throw new Error('La página de YouTube no trae datos');
+  return { ok: true, data: JSON.parse(html.slice(i + marca.length, f)), logueado: /"LOGGED_IN":true/.test(html) };
+}
+
+chrome.runtime.onMessage.addListener((m, sender, sendResponse) => {
+  if (m && m.ytFetch) {
+    ytPage(m.ytFetch).then(sendResponse, (e) => sendResponse({ ok: false, error: e.message }));
+    return true; // la respuesta llega después
+  }
   if (m && m.vprog) { // content.js (iframe del reproductor): cómo va el video -> tv.js de la página
     if (sender.tab) chrome.tabs.sendMessage(sender.tab.id, { vprog: m.vprog }, { frameId: 0 }).catch(() => {});
     return;
   }
   if (m && m.vlog) { // diagnóstico de trabadas: al servidor, con el episodio de la pestaña
     const url = (sender.tab && sender.tab.url) || '';
+    if (!isAnime(url)) return; // solo el modo anime
     const ep = (url.match(/#\/ver\/([^/?]+)\/([^/?]+)/) || []).slice(1).join(' ');
     const q = new URLSearchParams({ ep, d: JSON.stringify(m.vlog) });
     fetch('http://127.0.0.1:8080/anime/api/log?' + q).catch(() => {});
@@ -207,6 +227,11 @@ async function navActiveTab(nav) {
     await chrome.tabs.update(tab.id, { url: ANIME_URL + (nav === 'lista' ? '#/lista' : '') });
     return { ok: true };
   }
+  // Botón «YouTube» del celular: abrir el modo YouTube (si ya se está ahí, la página va al inicio)
+  if (nav === 'youtube' && !isYtApp(tab.url)) {
+    await chrome.tabs.update(tab.id, { url: YTAPP_URL });
+    return { ok: true };
+  }
   let res = null;
   try { res = await tellTab(tab.id, nav); } catch {}
   if (!res) {
@@ -239,7 +264,7 @@ async function reportState() {
   const url = (tab && tab.url) || '';
   const site = /^https:\/\/([\w-]+\.)*youtube\.com\//.test(url) ? 'youtube'
     : /^https:\/\/([\w-]+\.)*animeav1\.com\//.test(url) ? 'animeav1'
-    : isAnime(url) ? 'anime' : '';
+    : isAnime(url) ? 'anime' : isYtApp(url) ? 'ytapp' : '';
   const key = watch + '|' + site;
   if (key === lastWatch) return;
   lastWatch = key;
@@ -249,7 +274,7 @@ chrome.tabs.onActivated.addListener(() => reportState());
 chrome.tabs.onUpdated.addListener((id, info, tab) => {
   if (!info.url) return;
   // El modo anime cambia de pantalla sin recargar (y él mismo avisa si hay video y la pantalla completa)
-  if (isAnime(info.url)) { reportState(); return; }
+  if (isAnime(info.url) || isYtApp(info.url)) { reportState(); return; }
   watchByTab.delete(id); reportState();
   // Se fue de la página con el reproductor agrandado: devolver la ventana a como estaba
   if (prevState[tab.windowId] && tab.active) setWindowFull(tab.windowId, false).catch(() => {});

@@ -625,6 +625,10 @@
       if (r.seekTo != null) chrome.runtime.sendMessage({ seekTo: +r.seekTo });
       if (r.park) parkSpot();
       if ('watch' in r) { appWatch = !!r.watch; lastWatch = null; report(); }
+      if (r.ytFetch) { // modo YouTube: una página de YouTube con la sesión (la baja bg.js)
+        const fin = (res) => window.postMessage({ pitvEv: { ytres: { id: r.id, ...res } } }, '*');
+        chrome.runtime.sendMessage({ ytFetch: r.ytFetch }).then((res) => fin(res || { ok: false }), (e) => fin({ ok: false, error: String(e) }));
+      }
     } catch {}
   }
   if (APP) {
@@ -634,6 +638,7 @@
       if (d.pitvRes && appWait.has(d.pitvRes)) { const f = appWait.get(d.pitvRes); appWait.delete(d.pitvRes); f(d.res || {}); }
       else if (d.pitvReq) appReq(d.pitvReq);
     });
+    window.postMessage({ pitvEv: { hola: true } }, '*'); // la página sabe que la extensión está
   }
 
   chrome.runtime.onMessage.addListener((m, _sender, reply) => {

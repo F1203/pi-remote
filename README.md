@@ -16,6 +16,7 @@ Control remoto de la Raspberry Pi desde el celular: trackpad, teclado, atajos de
 - `extension/`: extensión de Brave que avisa cuando se enfoca un campo de texto, adelanta videos y
   hace la navegación del modo tele (`tv.js`).
 - `anime.py` + `anime/`: modo anime (ver abajo). Lo guardado queda en `anime.json` (fuera del repo).
+- `youtube.py` + `youtube/`: modo YouTube (ver abajo). Lo guardado queda en `youtube.json` (fuera del repo).
 
 Corre como servicio de usuario: `systemctl --user restart pi-remote`.
 
@@ -135,3 +136,30 @@ los accesos rápidos cambian a **Mi lista**, **Horario** y **Catálogo**.
   margen de ~25 s. Para diagnosticar quedó un registro temporal en `anime-diag.log`
   (esperas, cuadros perdidos, tiempos de cada segmento, estado de la Pi cada 30 s).
 - Sin extensión también se maneja con un teclado (flechas, Enter, Escape).
+
+## Modo YouTube
+
+Tu YouTube (con la sesión de Brave) como una app de tele: `http://<pi>:8080/youtube/`. Se abre con
+el botón **YouTube** del modo tele del celular (o desde la barra del modo anime, y al revés). Ahí los
+accesos rápidos del celular son **Suscrip.**, **Canales** e **Historial**. Se maneja igual que el
+modo anime (misma cruceta, mantener OK = opciones, misma base de estilos `../anime/estilo.css`).
+
+- **Inicio:** *Seguir viendo*, últimos videos de las suscripciones, una fila por cada **canal
+  favorito** y los recomendados. También: **Suscripciones**, **Canales** (favoritos y todos los
+  canales a los que estás suscrito), **Historial**, **Ver más tarde** y **Buscar** (canales y videos).
+  Sin Shorts. Solo se ve la primera tanda de cada lista (lo que trae la página de YouTube).
+- **Opciones:** ir al canal, ★ canal favorito / quitarlo, quitar de «Seguir viendo», abrir en YouTube.
+- **Reproductor propio** (`youtube.com/embed`, a pantalla completa, con play solo): ←/→ ±10 s, OK
+  pausa, la ruedita del celular adelanta. ↓ abre el panel: **canal** (elegido de entrada),
+  anterior/siguiente (de la fila desde la que se abrió el video; si no, el primer relacionado),
+  subtítulos, ★ canal favorito, abrir en YouTube y una fila de **relacionados**. Al terminar de
+  verdad (`ended`) pasa al siguiente en 10 s. Si el video no se deja ver fuera de YouTube, se abre
+  solo en youtube.com.
+- **Seguir viendo:** desde los 30 s de video; sigue 3 s antes de donde quedó. Un video está visto
+  si le falta el 5 % (entre 15 s y 1 min: la pantalla final) y sale de la lista.
+- **Cómo funciona:** la página le pide a la extensión cada página de YouTube (`{ytFetch}` → `tv.js`
+  → `bg.js`, que la baja con las cookies de Brave y devuelve su `ytInitialData`). La página
+  recorre esos datos buscando `videoRenderer` / `lockupViewModel` / `channelRenderer`. Sin la
+  extensión (otro navegador), el servidor baja las páginas sin sesión (`/youtube/api/pagina`):
+  alcanza para buscar y ver canales. Si YouTube no ve la sesión, la página lo avisa y el servidor
+  lo anota en su registro.

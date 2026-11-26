@@ -41,8 +41,10 @@ if (window === top && /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(location.href))
   if (window === top) return;
   const anc = [...(location.ancestorOrigins || [])];
   if (!anc.length || !/^https?:\/\/[^/]+:8080$/.test(anc[anc.length - 1])) return;
+  // En YouTube cualquier video sirve; en los demás, los de menos de un minuto suelen ser publicidad
+  const YT = /(^|\.)youtube(-nocookie)?\.com$/.test(location.hostname);
   const elegido = () => [...document.querySelectorAll('video')]
-    .filter((v) => v.readyState > 0 && v.duration > 60 && Number.isFinite(v.duration))
+    .filter((v) => v.readyState > 0 && v.duration > (YT ? 0 : 60) && Number.isFinite(v.duration))
     .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
   const enviar = (v, extra) => {
     if (!v) return;
@@ -52,6 +54,16 @@ if (window === top && /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(location.href))
   // 'playing' avisa enseguida que arrancó (y la página puede seguir desde donde quedó)
   document.addEventListener('playing', (ev) => { if (ev.target === elegido()) enviar(ev.target); }, true);
   document.addEventListener('ended', (ev) => { if (ev.target === elegido()) enviar(ev.target, { ended: true }); }, true);
+  // Modo YouTube: el video no se puede ver fuera de YouTube (o no existe): avisar a la página
+  if (YT) {
+    let avisado = false;
+    setInterval(() => {
+      const e = document.querySelector('.ytp-error');
+      if (avisado || !e || !e.getClientRects().length) return;
+      avisado = true;
+      try { chrome.runtime.sendMessage({ vprog: { error: (e.innerText || '').trim().split('\n')[0].slice(0, 160) } }); } catch {}
+    }, 1000);
+  }
 
   // ----- Diagnóstico de trabadas -----
   vigilarHilo('video');

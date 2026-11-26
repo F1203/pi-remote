@@ -1,0 +1,38 @@
+/* Modo YouTube: sobre la base del modo anime (../anime/estilo.css) */
+:root { --acento: #e5202e; --acento2: #ff6b74; }
+.foco { box-shadow: 0 0 0 0.22rem #fff, 0 0 1.4rem 0.3rem rgba(229, 32, 46, 0.6) !important; }
+#barra { gap: 0.4rem; }
+#barra .marca { margin-right: 1rem; }
+#barra .marca span { background: var(--acento); color: #fff; border-radius: 0.45rem; padding: 0 0.35rem; margin-left: 0.12rem; }
+#barra .menu { padding: 0.45rem 0.85rem; }
+
+/* Videos: miniatura 16:9, duración abajo a la derecha, canal debajo del título */
+.tarjeta.video { width: 19rem; }
+.grilla.videos { grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); }
+.grilla .tarjeta.video, .grilla .tarjeta.canal { width: auto; }
+.insignia.dur { left: auto; top: auto; right: 0.5rem; bottom: 0.6rem; }
+.insignia.vivo { background: var(--acento); }
+
+/* Canales: avatar redondo */
+.tarjeta.canal { width: 11rem; background: none; text-align: center; overflow: visible; }
+.tarjeta.canal .img { aspect-ratio: 1; border-radius: 50%; overflow: hidden; margin: 0.4rem 1rem 0; }
+.tarjeta.canal.foco { transform: scale(1.07); box-shadow: none !important; }
+.tarjeta.canal.foco .img { box-shadow: 0 0 0 0.22rem #fff, 0 0 1.4rem 0.3rem rgba(229, 32, 46, 0.6); }
+.tarjeta.canal .titulo { height: auto; -webkit-line-clamp: 2; }
+.tarjeta.canal .fav { color: #ffcc33; }
+.grilla.canales { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+
+/* Encabezado de un canal */
+.canal-cab { display: flex; align-items: center; gap: 2rem; padding: 1.2rem 3rem 0; }
+.canal-cab img { width: 8rem; height: 8rem; border-radius: 50%; object-fit: cover; background: var(--panel2); }
+.canal-cab h1 { margin: 0 0 0.4rem; font-size: 2.4rem; }
+.canal-cab p { margin: 0 0 1rem; color: var(--suave); max-width: 60rem;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.aviso-sesion { margin: 1rem 3rem 0; padding: 1rem 1.4rem; border-radius: var(--radio); background: var(--panel); color: var(--suave); font-size: 1.1rem; }
+
+/* Panel del reproductor: también los relacionados */
+#controles .fila { margin-top: 0.6rem; }
+#controles .fila h2 { margin: 0 0 0; font-size: 1.15rem; color: var(--suave); }
+#controles .fila-items { padding: 0.9rem 0 0.4rem; scroll-padding: 0; }
+#controles .tarjeta.video { width: 15rem; }
+#controles .tarjeta .titulo { font-size: 0.85rem; }
