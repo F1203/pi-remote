@@ -644,6 +644,7 @@ function hacer(acc, el) {
   if (acc.startsWith('m-')) return hacerMenu(acc);
   if (acc === 'reintentar') { cacheYt.clear(); render(); return {}; }
   if (acc === 'anime') { location.href = '../anime/'; return {}; }
+  if (acc === 'pelis') { location.href = '../pelis/'; return {}; }
   if (acc === 'fav') {
     alternarFavorito({ canalId: el.dataset.canal, nombre: el.dataset.nombre, avatar: el.dataset.avatar }).then((on) => {
       el.classList.toggle('marcado', on);

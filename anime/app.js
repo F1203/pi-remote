@@ -599,6 +599,7 @@ function hacer(acc, el) {
   if (acc.startsWith('m-')) return hacerMenu(acc);
   if (acc === 'reintentar') { cache.clear(); render(); return {}; }
   if (acc === 'youtube') { location.href = '../youtube/'; return {}; }
+  if (acc === 'pelis') { location.href = '../pelis/'; return {}; }
   if (acc === 'audio') {
     guardar({ accion: 'audio', v: estado.audio === 'SUB' ? 'DUB' : 'SUB' }).then(() => toast('Audio preferido: ' + (estado.audio === 'SUB' ? 'japonés con subtítulos' : 'doblado')));
     return {};

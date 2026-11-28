@@ -166,7 +166,7 @@ modo anime (misma cruceta, mantener OK = opciones, misma base de estilos `../ani
   extensión (otro navegador), el servidor baja las páginas sin sesión (`/youtube/api/pagina`):
   alcanza para buscar y ver canales. Si YouTube no ve la sesión, la página lo avisa y el servidor
   lo anota en su registro.
-- **Puntero:** en las pantallas de anime y YouTube (y dentro de sus reproductores) se esconde solo a
+- **Puntero:** en las pantallas de anime, YouTube y pelis (y dentro de sus reproductores) se esconde solo a
   los 2,5 s sin moverse (`content.js`); vuelve al mover el trackpad.
 
 ## Modo pelis
@@ -176,18 +176,20 @@ Películas de Cinecalidad como una app de tele: `http://<pi>:8080/pelis/`. Se ab
 celular son **Favoritos** y **Géneros**. Se maneja igual que los otros modos (misma cruceta,
 mantener OK = opciones, misma base de estilos `../anime/estilo.css`).
 
-- **Inicio:** *Seguir viendo*, la cartelera del sitio (últimas publicadas) y los favoritos.
-  **Buscar:** por título. **Favoritos:** las películas guardadas. **Géneros:** acción, comedia,
-  drama, terror, etc.
-- **Detalle de película:** sinopsis, calificación, director, géneros y los botones para ver,
-  agregar a favoritos o ver el trailer.
+- **Inicio:** una portada con una película *Destacada* (cambia cada vez que se abre), *Seguir viendo*
+  (con lo que falta), *Recién agregadas*, *Destacadas*, *Mis favoritos* y una fila por género
+  (acción, comedia, terror…). **Buscar:** por título, mientras se escribe. **Favoritos:** grilla.
+  **Géneros:** mosaicos de colores; cada género es una grilla que trae más películas al llegar al final.
+- **Detalle de película:** sinopsis, año, calidad, nota de IMDb, audio, dirección y elenco; botones
+  para ver (o *Seguir viendo · mm:ss* y *Desde el principio*), favoritos, trailer y quitar de
+  «Seguir viendo»; abajo, *Más de <género>*.
 - **Reproductor:** un iframe con el servidor elegido (Filemoon, Voe, Doodstream, Mega). ↓ abre el
   panel para cambiar de servidor; el último elegido se recuerda. ←/→ ±10 s, OK pausa. Atrás sale
   del video.
 - **Seguir viendo:** guarda el progreso si la extensión avisa (como en el modo anime). Al volver a
   una película sigue desde donde quedó.
-- **Opciones (mantener OK):** ver película, información, agregar/quitar de favoritos, quitar de
-  «Seguir viendo».
+- **Opciones (mantener OK, o clic derecho del trackpad):** ver película, información, agregar/quitar
+  de favoritos, quitar de «Seguir viendo». Un clic del trackpad hace lo mismo que OK.
 - **Cómo funciona:** `pelis.py` scrapea el HTML de Cinecalidad (cartelera, búsqueda, página de cada
   película) y extrae los enlaces a los reproductores. El estado (favoritos, progreso) se guarda en
   `pelis.json`. La extensión quita `x-frame-options` de los embeds (`rules.json`) para que se puedan

@@ -65,23 +65,35 @@ def _cc_tarjetas(html):
         html
     ):
         url, img, extract = m.groups()
-        titulo = re.search(r'in_title[^>]*>([^<]+)', unescape(extract))
-        titulo = titulo.group(1).strip() if titulo else ""
-        sinopsis = re.search(r'<p>([^<]+)', unescape(extract))
-        sinopsis = sinopsis.group(1).strip() if sinopsis else ""
-        generos_raw = re.findall(r'home_post_cat.*?href=[^>]+>([^<]+)', unescape(extract))
+        extract = unescape(extract)
+        titulo = re.search(r'in_title[^>]*>([^<]+)', extract)
+        titulo = unescape(titulo.group(1)).strip() if titulo else ""
+        sinopsis = re.search(r'<p>([^<]+)', extract)
+        sinopsis = unescape(sinopsis.group(1)).strip() if sinopsis else ""
+        cat = re.search(r'home_post_cat(.*?)</div>', extract, re.DOTALL)
+        generos = [unescape(g).strip() for g in re.findall(r'>([^<]+)</a>', cat.group(1))] if cat else []
         # Slug: la parte útil de la URL
         slug = url.rstrip("/").rsplit("/", 1)[-1]
         pelis.append({
-            "slug": slug, "url": url, "title": titulo, "img": img,
-            "sinopsis": sinopsis[:300], "generos": generos_raw, "sitio": "cinecalidad",
+            "slug": slug, "url": url, "title": titulo, "img": img, "img_grande": _img_grande(img),
+            "sinopsis": sinopsis[:300], "generos": [g for g in generos if g.lower() != "destacada"],
+            "destacada": any(g.lower() == "destacada" for g in generos), "sitio": "cinecalidad",
         })
     return pelis
+
+
+def _img_grande(img):
+    """La misma portada sin achicar (Cinecalidad sirve la miniatura como nombre-220x320.jpg)."""
+    return re.sub(r"-\d+x\d+(\.\w+)$", r"\1", img)
 
 
 def cc_inicio():
     html = _get(CC_HOST + "/", dura=600)
     return {"pelis": _cc_tarjetas(html)}
+
+
+def cc_destacadas():
+    return cc_genero("destacada")
 
 
 def cc_genero(genero, pagina=1):
@@ -133,11 +145,23 @@ def cc_pelicula(slug):
     if m:
         img = m.group(1)
 
-    generos = re.findall(r'genero-peliculas/[^/]+/[^>]*>([^<]+)', html)
-    director = ""
-    m = re.search(r"Director:</strong>.*?>([\w\s.'-]+)<", html)
+    # Los datos de la ficha (no el menú del sitio, que también enlaza a todos los géneros)
+    def dato(nombre):
+        m = re.search(nombre + r":</strong>(.*?)</span>", html, re.DOTALL)
+        return unescape(re.sub(r"<[^>]+>", "", m.group(1))).replace("\xa0", " ").strip() if m else ""
+
+    generos = []
+    m = re.search(r"Género:</strong>(.*?)</span>", html, re.DOTALL)
     if m:
-        director = m.group(1).strip()
+        for g in re.findall(r">([^<]+)</a>", m.group(1)):
+            g = unescape(g).strip()
+            if g.lower() != "destacada" and g.lower() not in [x.lower() for x in generos]:
+                generos.append(g[:1].upper() + g[1:])
+    director = dato("Director")
+    elenco = [x.strip() for x in dato("Elenco").split(",") if x.strip()][:5]
+    audio = dato("Audio")
+    calidad = dato("Calidad").split("|")[0].strip()
+    original = dato("Títulos")
 
     anio = ""
     m = re.search(r"\((\d{4})\)", titulo)
@@ -167,7 +191,9 @@ def cc_pelicula(slug):
 
     return {
         "title": titulo, "rating": rating, "sinopsis": sinopsis, "img": img,
-        "generos": generos, "director": director, "anio": anio,
+        "generos": generos, "director": director, "anio": anio, "elenco": elenco,
+        "audio": audio, "calidad": calidad, "original": original,
+        "img_grande": _img_grande(img),
         "servidores": servidores, "trailer": trailer, "sitio": "cinecalidad",
     }
 
@@ -266,6 +292,8 @@ def api(ruta, query):
             return 200, cc_genero(q["g"], int(q.get("pagina", 1)))
         if ruta == "pelicula":
             return 200, cc_pelicula(q["slug"])
+        if ruta == "destacadas":
+            return 200, cc_destacadas()
         if ruta == "generos":
             return 200, {"generos": GENEROS}
         if ruta == "estado":

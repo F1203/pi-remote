@@ -116,10 +116,10 @@ if (window === top && /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(location.href))
   } catch {}
 })();
 
-// Modos anime y YouTube (páginas del servidor y sus reproductores): el puntero se esconde solo a
+// Modos anime, YouTube y pelis (páginas del servidor y sus reproductores): el puntero se esconde solo a
 // los 2,5 s sin moverse, como en una tele (el reproductor de YouTube embebido no lo esconde).
 (() => {
-  const APP = /^https?:\/\/[^/]+:8080\/(anime|youtube)(\/|$)/;
+  const APP = /^https?:\/\/[^/]+:8080\/(anime|youtube|pelis)(\/|$)/;
   const anc = [...(location.ancestorOrigins || [])];
   const enApp = window === top ? APP.test(location.href) : anc.length && /^https?:\/\/[^/]+:8080$/.test(anc[anc.length - 1]);
   if (!enApp) return;

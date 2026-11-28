@@ -1,75 +1,41 @@
-/* Pelis TV: ajustes sobre la base de anime/estilo.css */
+/* Modo pelis: ajustes sobre la base de ../anime/estilo.css (mismas medidas en rem, mismo foco) */
+:root { --acento: #e5383b; --acento2: #ff8a80; }
+.foco { box-shadow: 0 0 0 0.22rem #fff, 0 0 1.4rem 0.3rem rgba(229, 56, 59, 0.6) !important; }
 
-.marca span { color: #e53935; }
+/* Las portadas de Cinecalidad no tienen fondo apaisado: se usa la misma portada, agrandada y borrosa */
+.hero > img.fondo.borroso, .detalle > img.fondo.borroso {
+  filter: blur(2.2rem) saturate(1.3) brightness(0.55); transform: scale(1.25);
+}
+.hero.peli { flex-direction: row; align-items: flex-end; gap: 2.4rem; height: 33rem; }
+.hero.peli .poster {
+  width: 15rem; flex: 0 0 auto; aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--radio);
+  box-shadow: 0 1rem 3rem #000a; order: 2; margin-left: auto; margin-right: 2rem;
+}
+.hero.peli .texto { flex: 1; min-width: 0; padding-bottom: 0.4rem; }
+.hero .etiquetas .destaque { color: var(--acento2); font-weight: 700; }
 
-/* Tarjetas de películas: las mismas que anime pero un poco más anchas */
-.tarjeta-peli {
-  width: 180px;
-  flex-shrink: 0;
-}
-.tarjeta-peli img {
-  width: 180px;
-  height: 260px;
-  object-fit: cover;
-  border-radius: 8px;
-}
-.tarjeta-peli .titulo {
-  font-size: 13px;
-  margin-top: 6px;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.tarjeta-peli .meta {
-  font-size: 11px;
-  color: #8a94a3;
-  margin-top: 2px;
-}
+/* Tarjetas: año y género debajo del título; la nota arriba a la izquierda */
+.tarjeta .insignia.nota { background: #000c; color: #ffd166; }
 
-/* Detalle de película */
-.detalle {
-  display: flex;
-  gap: 24px;
-  padding: 20px;
-  max-width: 900px;
-}
-.detalle .poster img {
-  width: 220px;
-  height: 320px;
-  object-fit: cover;
-  border-radius: 10px;
-}
-.detalle .info {
-  flex: 1;
-}
-.detalle .info h2 {
-  margin: 0 0 8px;
-  font-size: 24px;
-}
-.detalle .info .dato {
-  color: #8a94a3;
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-.detalle .info .dato b {
-  color: #e8ecf1;
-}
-.detalle .info .sinopsis {
-  margin-top: 12px;
-  font-size: 14px;
-  line-height: 1.6;
-  color: #c0c6cf;
-}
+/* Detalle de una película */
+.detalle { overflow: hidden; padding-bottom: 1rem; }
+.detalle .info { flex: 1; min-width: 0; max-width: 56rem; }
+.detalle .original { color: var(--suave); font-size: 1.1rem; margin: -0.2rem 0 0.7rem; }
+.detalle .creditos { color: var(--suave); font-size: 1rem; margin: 0 0 1.3rem; max-width: 50rem; }
+.detalle .creditos b { color: var(--texto); font-weight: 600; }
+.detalle .botones { margin-bottom: 1.5rem; }
+.detalle .etiquetas .nota { color: #ffd166; font-weight: 700; }
 
-/* Grilla de géneros */
-.genero-chip {
-  display: inline-block;
-  padding: 12px 24px;
-  background: #262d36;
-  border-radius: 10px;
-  font-size: 15px;
-  margin: 4px;
-  text-transform: capitalize;
+/* Géneros: mosaicos grandes de colores */
+.generos { display: grid; gap: 1.1rem; padding: 1.1rem 3rem 1.3rem; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); }
+.genero {
+  border: 0; border-radius: var(--radio); height: 7.5rem; padding: 0 1.6rem; text-align: left;
+  font-size: 1.6rem; font-weight: 800; color: #fff; display: flex; align-items: flex-end; padding-bottom: 1.1rem;
+  background: linear-gradient(135deg, var(--c1), var(--c2)); text-shadow: 0 0.1rem 0.6rem #0006;
 }
+.genero.foco { transform: scale(1.05); }
+
+/* Títulos de página (favoritos, géneros, un género) */
+.titulo-pagina { margin: 1rem 3rem 0; font-size: 2rem; }
+.titulo-pagina small { font-size: 1.1rem; color: var(--suave); font-weight: 500; margin-left: 0.8rem; }
+.mas { color: var(--suave); padding: 0.5rem 3rem 2rem; font-size: 1.1rem; }
