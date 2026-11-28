@@ -65,6 +65,7 @@ def _cc_tarjetas(html):
         html
     ):
         url, img, extract = m.groups()
+        url, img = _absoluta(url), _absoluta(img)
         extract = unescape(extract)
         titulo = re.search(r'in_title[^>]*>([^<]+)', extract)
         titulo = unescape(titulo.group(1)).strip() if titulo else ""
@@ -80,6 +81,12 @@ def _cc_tarjetas(html):
             "destacada": any(g.lower() == "destacada" for g in generos), "sitio": "cinecalidad",
         })
     return pelis
+
+
+def _absoluta(url):
+    """Cinecalidad a veces escribe los enlaces sin el dominio (/wp-content/...): completarlos."""
+    url = url.strip("\"'")
+    return urllib.parse.urljoin(CC_HOST + "/", url) if url else ""
 
 
 def _img_grande(img):
@@ -143,7 +150,7 @@ def cc_pelicula(slug):
     img = ""
     m = re.search(r"single_left.*?<img[^>]*src=(\S+)", html)
     if m:
-        img = m.group(1)
+        img = _absoluta(m.group(1))
 
     # Los datos de la ficha (no el menú del sitio, que también enlaza a todos los géneros)
     def dato(nombre):
@@ -231,6 +238,10 @@ def _leer():
     e.setdefault("favoritos", {})   # slug -> {title, img, url, sitio, fecha}
     e.setdefault("viendo", {})      # slug -> {title, img, url, sitio, t, d, servidor, fecha}
     e.setdefault("servidor", "")    # último servidor elegido a mano
+    for lista in (e["favoritos"], e["viendo"]):
+        for v in lista.values():
+            if v.get("img", "").startswith("/"):
+                v["img"] = _absoluta(v["img"])
     return e
 
 
