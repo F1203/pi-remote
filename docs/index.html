@@ -77,8 +77,8 @@
   /* Accesos rápidos según el sitio abierto en Brave (lo avisa la extensión) */
   .site-yt, .site-anime, .site-app, .site-ytapp { display:none !important; }
   body[data-site=youtube] .site-yt { display:block !important; }
-  body[data-site=animeav1] .site-anime, body[data-site=anime] .site-app, body[data-site=ytapp] .site-ytapp { display:flex !important; }
-  body[data-site=anime] .no-anime, body[data-site=ytapp] .no-ytapp { display:none !important; }
+  body[data-site=animeav1] .site-anime, body[data-site=anime] .site-app, body[data-site=ytapp] .site-ytapp, body[data-site=pelisapp] .site-pelisapp { display:flex !important; }
+  body[data-site=anime] .no-anime, body[data-site=ytapp] .no-ytapp, body[data-site=pelisapp] .no-pelis { display:none !important; }
   #kb { position:fixed; left:0; bottom:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; resize:none; }
 </style>
 </head>
@@ -123,6 +123,7 @@
       <button data-nav="subs" data-icon="subs" class="site-yt" title="Suscripciones de YouTube"> Suscrip.</button>
       <button data-nav="youtube" data-icon="tv" class="no-ytapp" title="Modo YouTube: tu YouTube como una app de tele (seguir viendo, canales favoritos)"> YouTube</button>
       <button data-nav="anime" data-icon="star" class="no-anime" title="Modo anime: animeav1 como una app de tele (seguir viendo, mi lista)"> Anime</button>
+      <button data-nav="pelis" data-icon="film" class="no-pelis" title="Modo pelis: películas de Cinecalidad como una app de tele"> Pelis</button>
     </div>
     <div class="row site-ytapp">
       <button data-nav="subs" data-icon="subs" title="Suscripciones"> Suscrip.</button>
@@ -137,6 +138,10 @@
     <div class="row site-anime">
       <button data-nav="horario" data-icon="calendar" title="Horario de AnimeAV1"> Horario</button>
       <button data-nav="catalogo" data-icon="grid" title="Catálogo de animes de AnimeAV1"> Catálogo</button>
+    </div>
+    <div class="row site-pelisapp">
+      <button data-nav="favoritos" data-icon="bookmark" title="Películas favoritas"> Favoritos</button>
+      <button data-nav="generos" data-icon="grid" title="Buscar por género"> Géneros</button>
     </div>
     <div id="dpadwrap"><span id="tvstatus"></span>
       <div id="dpad">

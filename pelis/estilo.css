@@ -1,0 +1,75 @@
+/* Pelis TV: ajustes sobre la base de anime/estilo.css */
+
+.marca span { color: #e53935; }
+
+/* Tarjetas de películas: las mismas que anime pero un poco más anchas */
+.tarjeta-peli {
+  width: 180px;
+  flex-shrink: 0;
+}
+.tarjeta-peli img {
+  width: 180px;
+  height: 260px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.tarjeta-peli .titulo {
+  font-size: 13px;
+  margin-top: 6px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tarjeta-peli .meta {
+  font-size: 11px;
+  color: #8a94a3;
+  margin-top: 2px;
+}
+
+/* Detalle de película */
+.detalle {
+  display: flex;
+  gap: 24px;
+  padding: 20px;
+  max-width: 900px;
+}
+.detalle .poster img {
+  width: 220px;
+  height: 320px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+.detalle .info {
+  flex: 1;
+}
+.detalle .info h2 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+.detalle .info .dato {
+  color: #8a94a3;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.detalle .info .dato b {
+  color: #e8ecf1;
+}
+.detalle .info .sinopsis {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #c0c6cf;
+}
+
+/* Grilla de géneros */
+.genero-chip {
+  display: inline-block;
+  padding: 12px 24px;
+  background: #262d36;
+  border-radius: 10px;
+  font-size: 15px;
+  margin: 4px;
+  text-transform: capitalize;
+}

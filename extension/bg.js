@@ -1,8 +1,10 @@
-// Modo anime y modo YouTube: las páginas que sirve el servidor del control remoto
+// Modo anime, modo YouTube y modo pelis: las páginas que sirve el servidor del control remoto
 const ANIME_URL = 'http://127.0.0.1:8080/anime/';
 const YTAPP_URL = 'http://127.0.0.1:8080/youtube/';
+const PELIS_URL = 'http://127.0.0.1:8080/pelis/';
 const isAnime = (url) => /^https?:\/\/[^/]+:8080\/anime(\/|$)/.test(url || '');
 const isYtApp = (url) => /^https?:\/\/[^/]+:8080\/youtube(\/|$)/.test(url || '');
+const isPelis = (url) => /^https?:\/\/[^/]+:8080\/pelis(\/|$)/.test(url || '');
 
 // Modo YouTube: baja una página de YouTube con la sesión de Brave y devuelve su ytInitialData
 async function ytPage(path) {
@@ -233,6 +235,12 @@ async function navActiveTab(nav) {
     await chrome.tabs.update(tab.id, { url: YTAPP_URL });
     return { ok: true };
   }
+  // Botón «Pelis» del celular (o Favoritos/Géneros fuera de la app): abrir el modo pelis
+  if ((nav === 'pelis' || nav === 'favoritos' || nav === 'generos') && !isPelis(tab.url)) {
+    const frag = nav === 'favoritos' ? '#/favoritos' : nav === 'generos' ? '#/generos' : '';
+    await chrome.tabs.update(tab.id, { url: PELIS_URL + frag });
+    return { ok: true };
+  }
   let res = null;
   try { res = await tellTab(tab.id, nav); } catch {}
   if (!res) {
@@ -265,7 +273,7 @@ async function reportState() {
   const url = (tab && tab.url) || '';
   const site = /^https:\/\/([\w-]+\.)*youtube\.com\//.test(url) ? 'youtube'
     : /^https:\/\/([\w-]+\.)*animeav1\.com\//.test(url) ? 'animeav1'
-    : isAnime(url) ? 'anime' : isYtApp(url) ? 'ytapp' : '';
+    : isAnime(url) ? 'anime' : isYtApp(url) ? 'ytapp' : isPelis(url) ? 'pelisapp' : '';
   const key = watch + '|' + site;
   if (key === lastWatch) return;
   lastWatch = key;
@@ -274,8 +282,8 @@ async function reportState() {
 chrome.tabs.onActivated.addListener(() => reportState());
 chrome.tabs.onUpdated.addListener((id, info, tab) => {
   if (!info.url) return;
-  // El modo anime cambia de pantalla sin recargar (y él mismo avisa si hay video y la pantalla completa)
-  if (isAnime(info.url) || isYtApp(info.url)) { reportState(); return; }
+  // El modo anime/youtube/pelis cambia de pantalla sin recargar (y él mismo avisa si hay video y la pantalla completa)
+  if (isAnime(info.url) || isYtApp(info.url) || isPelis(info.url)) { reportState(); return; }
   watchByTab.delete(id); reportState();
   // Se fue de la página con el reproductor agrandado: devolver la ventana a como estaba
   if (prevState[tab.windowId] && tab.active) setWindowFull(tab.windowId, false).catch(() => {});

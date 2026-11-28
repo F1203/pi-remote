@@ -15,6 +15,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 import anime
+import pelis
 import youtube
 import ble
 
@@ -23,6 +24,7 @@ BASE = Path(__file__).resolve().parent
 WEB = BASE / "docs"  # la misma carpeta que publica GitHub Pages
 ANIME = BASE / "anime"  # modo anime (pantalla para la tele, solo en la Pi)
 YOUTUBE = BASE / "youtube"  # modo YouTube (igual, con la sesión de Brave)
+PELIS = BASE / "pelis"  # modo pelis (películas de Cinecalidad y otros)
 MODS = {"ctrl": e.KEY_LEFTCTRL, "shift": e.KEY_LEFTSHIFT, "alt": e.KEY_LEFTALT, "logo": e.KEY_LEFTMETA}
 # Nombres de tecla que manda la página -> códigos evdev (las letras no cambian de lugar en es/latam)
 KEYS = {
@@ -353,7 +355,7 @@ async def seek(seconds):
 NAV_KEYS = {"up": ("Up", ()), "down": ("Down", ()), "left": ("Left", ()), "right": ("Right", ()),
             "ok": ("Return", ()), "back": ("Left", ("alt",)), "search": ("l", ("ctrl",)),
             "play": ("space", ()), "rw5": ("Left", ()), "ff5": ("Right", ()), "cc": ("c", ()), "full": ("f", ())}
-NAV_ACTIONS = set(NAV_KEYS) | {"home", "subs", "horario", "catalogo", "anime", "lista", "menu", "youtube", "canales", "historial"}
+NAV_ACTIONS = set(NAV_KEYS) | {"home", "subs", "horario", "catalogo", "anime", "lista", "menu", "youtube", "canales", "historial", "pelis", "favoritos", "generos"}
 tv_state = {"watch": False, "site": ""}  # si la pestaña activa de Brave es un video de YouTube (lo avisa la extensión)
 
 
@@ -512,7 +514,7 @@ ANIME_TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript; cha
                ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
 
 
-APPS = {"anime": (ANIME, anime.api), "youtube": (YOUTUBE, youtube.api)}
+APPS = {"anime": (ANIME, anime.api), "youtube": (YOUTUBE, youtube.api), "pelis": (PELIS, pelis.api)}
 
 
 async def app_request(app, path, query):
